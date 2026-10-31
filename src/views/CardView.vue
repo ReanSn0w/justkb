@@ -8,6 +8,7 @@ import { renderMarkdown } from '../features/markdown'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
+import AttachmentPanel from '../components/card/AttachmentPanel.vue'
 const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
@@ -138,6 +139,11 @@ function toggleTag(id: string) {
           </fieldset>
         </form>
         <aside class="panel">
+          <AttachmentPanel
+            :card-id="card.id"
+            :attachments="card.attachments || []"
+            @change="card.attachments = $event"
+          />
           <h2>История</h2>
           <ol class="activity">
             <li v-for="item in activity" :key="item.id">

@@ -405,6 +405,45 @@ textarea {
   color: var(--muted);
   margin-top: 3px;
 }
+.attachments {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+}
+.file-picker {
+  display: inline-flex;
+  background: #eef1f7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.file-picker input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.attachments progress {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+}
+.attachments ul {
+  list-style: none;
+  padding: 0;
+}
+.attachments li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.attachments small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
 @media (max-width: 700px) {
   .app-header {
     height: auto;
