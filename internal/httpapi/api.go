@@ -16,6 +16,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
+	"github.com/ReanSn0w/justkb/internal/tokens"
 )
 
 const jsonBodyLimit = 1 << 20
@@ -28,6 +29,7 @@ type api struct {
 	attachmentMax int64
 	cookieSecure  bool
 	loginLimiter  *ratelimit.Limiter
+	tokens        *tokens.Service
 }
 
 func registerAPI(mux *http.ServeMux, deps Dependencies) {
@@ -39,6 +41,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
 		attachments: attachmentService, attachmentMax: deps.AttachmentMaxSize, cookieSecure: deps.CookieSecure,
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
+		tokens:       tokens.NewService(deps.DB),
 	}
 	mux.HandleFunc("POST /api/v1/auth/login", server.login)
 	mux.Handle("POST /api/v1/auth/logout", server.member(http.HandlerFunc(server.logout)))
@@ -84,6 +87,9 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.Handle("POST /api/v1/cards/{id}/attachments", server.member(http.HandlerFunc(server.uploadAttachment)))
 	mux.Handle("GET /api/v1/attachments/{id}", server.member(http.HandlerFunc(server.downloadAttachment)))
 	mux.Handle("DELETE /api/v1/attachments/{id}", server.member(http.HandlerFunc(server.deleteAttachment)))
+	mux.Handle("GET /api/v1/tokens", server.member(http.HandlerFunc(server.listTokens)))
+	mux.Handle("POST /api/v1/tokens", server.member(http.HandlerFunc(server.createToken)))
+	mux.Handle("DELETE /api/v1/tokens/{id}", server.member(http.HandlerFunc(server.revokeToken)))
 }
 
 func (a *api) member(next http.Handler) http.Handler { return RequireSession(a.auth, next) }
@@ -529,6 +535,35 @@ func (a *api) deleteAttachment(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *api) listTokens(w http.ResponseWriter, r *http.Request) {
+	principal, _ := PrincipalFromContext(r.Context())
+	items, err := a.tokens.List(r.Context(), principal.User.ID)
+	writeList(w, r, items, err)
+}
+
+func (a *api) createToken(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name      string     `json:"name"`
+		Scopes    []string   `json:"scopes"`
+		ExpiresAt *time.Time `json:"expires_at"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.tokens.Create(r.Context(), principal.User.ID, input.Name, input.Scopes, input.ExpiresAt)
+	writeCreated(w, r, item, err)
+}
+
+func (a *api) revokeToken(w http.ResponseWriter, r *http.Request) {
+	principal, _ := PrincipalFromContext(r.Context())
+	if err := a.tokens.Revoke(r.Context(), principal.User.ID, r.PathValue("id")); err != nil {
+		handleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, jsonBodyLimit)
 	decoder := json.NewDecoder(r.Body)
@@ -548,9 +583,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
-	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound):
+	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
 		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
-	case errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden):
+	case errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Validation failed"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
