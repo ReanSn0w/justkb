@@ -350,6 +350,61 @@ textarea {
   max-width: 720px;
   margin: auto;
 }
+.card-page {
+  max-width: 1180px;
+  margin: auto;
+}
+.card-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 16px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+.editor-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+.editor-tabs button {
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+.markdown {
+  min-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  overflow: auto;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 10px 4px 0;
+}
+.activity {
+  padding-left: 20px;
+}
+.activity li {
+  margin-bottom: 14px;
+}
+.activity small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+}
 @media (max-width: 700px) {
   .app-header {
     height: auto;
