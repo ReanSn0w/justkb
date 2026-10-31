@@ -137,7 +137,22 @@ func (a *api) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) me(w http.ResponseWriter, r *http.Request) {
 	principal, _ := PrincipalFromContext(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{"user": principal.User, "csrf_token": principal.CSRFToken})
+	allGroups, err := a.board.ListGroups(r.Context())
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	wanted := make(map[string]bool, len(principal.User.GroupIDs))
+	for _, id := range principal.User.GroupIDs {
+		wanted[id] = true
+	}
+	groups := make([]board.Group, 0, len(wanted))
+	for _, group := range allGroups {
+		if wanted[group.ID] {
+			groups = append(groups, group)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": principal.User, "groups": groups, "csrf_token": principal.CSRFToken})
 }
 
 func (a *api) changePassword(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +314,7 @@ func (a *api) updateColumn(w http.ResponseWriter, r *http.Request) {
 }
 func (a *api) reorderColumns(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		IDs []string `json:"ids"`
+		IDs []string `json:"column_ids"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -460,6 +475,26 @@ func (a *api) updateCard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		input.TagIDs = &ids
+	}
+	if value, ok := raw["due_at"]; ok {
+		var dueAt *time.Time
+		if string(value) != "null" {
+			var rawTime string
+			if json.Unmarshal(value, &rawTime) != nil {
+				handleError(w, r, cards.ErrValidation)
+				return
+			}
+			parsed, parseErr := time.Parse(time.RFC3339, rawTime)
+			if parseErr != nil {
+				parsed, parseErr = time.Parse("2006-01-02T15:04", rawTime)
+			}
+			if parseErr != nil {
+				handleError(w, r, cards.ErrValidation)
+				return
+			}
+			dueAt = &parsed
+		}
+		input.DueAt = &dueAt
 	}
 	p, _ := PrincipalFromContext(r.Context())
 	item, err := a.cards.Update(r.Context(), cards.Actor{UserID: p.User.ID}, r.PathValue("id"), input)

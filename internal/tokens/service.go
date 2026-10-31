@@ -35,7 +35,7 @@ type Token struct {
 
 type Created struct {
 	Token
-	Secret string `json:"secret"`
+	Secret string `json:"token"`
 }
 
 type Service struct {

@@ -46,7 +46,7 @@ func TestCardLifecycleIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card.Number != 1 || len(card.TagIDs) != 1 || card.Version != 1 {
+	if card.Number != 1 || len(card.TagIDs) != 1 || len(card.Tags) != 1 || card.Tags[0].Name != "bug" || card.Version != 1 {
 		t.Fatalf("card = %#v", card)
 	}
 	if _, err := service.Create(ctx, actor, CreateInput{Title: "Second tagged card", ColumnID: firstColumn, TagIDs: []string{tagID}}); err != nil {

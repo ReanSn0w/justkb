@@ -27,24 +27,50 @@ type Attachment struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type Tag struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type CardEpic struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type CardGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type CardAssignee struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
 type Card struct {
-	ID          string       `json:"id"`
-	Number      int64        `json:"number"`
-	Title       string       `json:"title"`
-	Description string       `json:"description"`
-	ColumnID    string       `json:"column_id"`
-	EpicID      *string      `json:"epic_id"`
-	GroupID     *string      `json:"group_id"`
-	AssigneeID  *string      `json:"assignee_id"`
-	Position    string       `json:"position"`
-	DueAt       *time.Time   `json:"due_at"`
-	Version     int64        `json:"version"`
-	IsArchived  bool         `json:"is_archived"`
-	CreatedBy   string       `json:"created_by"`
-	TagIDs      []string     `json:"tag_ids"`
-	Attachments []Attachment `json:"attachments"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID          string        `json:"id"`
+	Number      int64         `json:"number"`
+	Title       string        `json:"title"`
+	Description string        `json:"description"`
+	ColumnID    string        `json:"column_id"`
+	EpicID      *string       `json:"epic_id"`
+	GroupID     *string       `json:"group_id"`
+	AssigneeID  *string       `json:"assignee_id"`
+	Position    string        `json:"position"`
+	DueAt       *time.Time    `json:"due_at"`
+	Version     int64         `json:"version"`
+	IsArchived  bool          `json:"is_archived"`
+	CreatedBy   string        `json:"created_by"`
+	TagIDs      []string      `json:"tag_ids"`
+	Tags        []Tag         `json:"tags"`
+	Epic        *CardEpic     `json:"epic"`
+	Group       *CardGroup    `json:"group"`
+	Assignee    *CardAssignee `json:"assignee"`
+	Attachments []Attachment  `json:"attachments"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
 }
 
 type Activity struct {
@@ -426,27 +452,49 @@ func (s *Service) Activity(ctx context.Context, cardID string, limit int) ([]Act
 
 const cardSelect = `
 	SELECT c.id,c.number,c.title,c.description,c.column_id,c.epic_id,c.group_id,c.assignee_id,c.position::text,c.due_at,c.version,c.is_archived,c.created_by,c.created_at,c.updated_at,
-	COALESCE((SELECT json_agg(ct.tag_id ORDER BY ct.tag_id) FROM card_tags ct WHERE ct.card_id=c.id),'[]'::json),
-	COALESCE((SELECT json_agg(json_build_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',a.created_at) ORDER BY a.created_at,a.id) FROM attachments a WHERE a.card_id=c.id),'[]'::json)
+	COALESCE((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY lower(t.name),t.id) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'::json),
+	COALESCE((SELECT json_agg(json_build_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',a.created_at) ORDER BY a.created_at,a.id) FROM attachments a WHERE a.card_id=c.id),'[]'::json),
+	(SELECT json_build_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
+	(SELECT json_build_object('id',g.id,'name',g.name) FROM groups g WHERE g.id=c.group_id),
+	(SELECT json_build_object('id',u.id,'display_name',u.display_name) FROM users u WHERE u.id=c.assignee_id)
 	FROM cards c`
 
 type scanner interface{ Scan(...any) error }
 
 func scanCard(row scanner) (Card, error) {
 	var card Card
-	var tags, attachments []byte
-	err := row.Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt, &tags, &attachments)
+	var tags, attachments, epic, group, assignee []byte
+	err := row.Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt, &tags, &attachments, &epic, &group, &assignee)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Card{}, ErrNotFound
 	}
 	if err != nil {
 		return Card{}, err
 	}
-	if err := json.Unmarshal(tags, &card.TagIDs); err != nil {
+	if err := json.Unmarshal(tags, &card.Tags); err != nil {
 		return Card{}, err
+	}
+	card.TagIDs = make([]string, 0, len(card.Tags))
+	for _, tag := range card.Tags {
+		card.TagIDs = append(card.TagIDs, tag.ID)
 	}
 	if err := json.Unmarshal(attachments, &card.Attachments); err != nil {
 		return Card{}, err
+	}
+	if len(epic) > 0 && string(epic) != "null" {
+		if err := json.Unmarshal(epic, &card.Epic); err != nil {
+			return Card{}, err
+		}
+	}
+	if len(group) > 0 && string(group) != "null" {
+		if err := json.Unmarshal(group, &card.Group); err != nil {
+			return Card{}, err
+		}
+	}
+	if len(assignee) > 0 && string(assignee) != "null" {
+		if err := json.Unmarshal(assignee, &card.Assignee); err != nil {
+			return Card{}, err
+		}
 	}
 	return card, nil
 }
