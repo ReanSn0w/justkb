@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 )
@@ -11,14 +12,20 @@ type ReadyChecker interface {
 }
 
 type Dependencies struct {
-	Logger      *slog.Logger
-	StoragePath string
-	Database    ReadyChecker
+	Logger            *slog.Logger
+	StoragePath       string
+	Database          ReadyChecker
+	DB                *sql.DB
+	CookieSecure      bool
+	AttachmentMaxSize int64
 }
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", liveHandler)
 	mux.HandleFunc("GET /health/ready", readyHandler(deps.StoragePath, deps.Database))
+	if deps.DB != nil {
+		registerAPI(mux, deps)
+	}
 	return middleware(deps.Logger, mux)
 }

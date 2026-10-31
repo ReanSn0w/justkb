@@ -36,9 +36,12 @@ func main() {
 	defer db.Close()
 
 	handler := httpapi.New(httpapi.Dependencies{
-		Logger:      logger,
-		StoragePath: cfg.StoragePath,
-		Database:    db,
+		Logger:            logger,
+		StoragePath:       cfg.StoragePath,
+		Database:          db,
+		DB:                db,
+		CookieSecure:      cfg.CookieSecure,
+		AttachmentMaxSize: cfg.AttachmentMaxSize,
 	})
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
