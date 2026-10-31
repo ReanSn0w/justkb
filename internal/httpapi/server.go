@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+
+	"github.com/ReanSn0w/justkb/internal/mcpserver"
 )
 
 type ReadyChecker interface {
@@ -26,6 +28,7 @@ func New(deps Dependencies) http.Handler {
 	mux.HandleFunc("GET /health/ready", readyHandler(deps.StoragePath, deps.Database))
 	if deps.DB != nil {
 		registerAPI(mux, deps)
+		mux.Handle("/mcp", mcpserver.NewHandler(deps.DB))
 	}
 	return middleware(deps.Logger, mux)
 }
