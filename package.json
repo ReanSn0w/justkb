@@ -1,0 +1,44 @@
+{
+  "name": "jkb-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:a11y": "vitest run src/test/accessibility.test.ts"
+  },
+  "dependencies": {
+    "@vueuse/core": "^14.0.0",
+    "dompurify": "^3.3.0",
+    "marked": "^16.4.1",
+    "pinia": "^3.0.3",
+    "sortablejs": "^1.15.6",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "^24.10.0",
+    "@types/sortablejs": "^1.15.9",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "axe-core": "^4.11.0",
+    "eslint": "^9.38.0",
+    "eslint-plugin-vue": "^10.5.1",
+    "jsdom": "^27.1.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^7.1.12",
+    "vitest": "^4.0.6",
+    "vue-eslint-parser": "^10.2.0",
+    "vue-tsc": "^3.1.1"
+  }
+}
