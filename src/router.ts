@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useSessionStore } from './stores/session'
+import { canAccessAdmin } from './features/authz'
 
 const routes = [
   {
@@ -32,6 +33,6 @@ router.beforeEach(async (to) => {
   const session = useSessionStore()
   if (!session.ready) await session.restore()
   if (!to.meta.public && !session.user) return { name: 'login', query: { next: to.fullPath } }
-  if (to.meta.admin && session.user?.role !== 'admin') return { name: 'board' }
+  if (to.meta.admin && !canAccessAdmin(session.user)) return { name: 'board' }
   if (to.name === 'login' && session.user) return { name: 'board' }
 })
