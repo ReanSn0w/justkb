@@ -500,6 +500,45 @@ textarea {
   display: inline-block;
   margin-right: 8px;
 }
+.tokens-page {
+  max-width: 1000px;
+  margin: auto;
+}
+.token-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.mcp-help code {
+  display: block;
+  overflow: auto;
+  background: #f2f4f8;
+  padding: 9px;
+  border-radius: 7px;
+}
+.token-list article {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.token-list article code,
+.token-list article small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.secret {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #eef1f7;
+  padding: 14px;
+  border-radius: 8px;
+  user-select: all;
+}
 @media (max-width: 700px) {
   .app-header {
     height: auto;
