@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/config"
+	"github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/httpapi"
 )
 
@@ -21,10 +22,23 @@ func main() {
 		logger.Error("invalid configuration", "error", err)
 		os.Exit(2)
 	}
+	if err := os.MkdirAll(cfg.StoragePath, 0o750); err != nil {
+		logger.Error("create storage directory", "error", err)
+		os.Exit(1)
+	}
+	connectContext, cancelConnect := context.WithTimeout(context.Background(), 10*time.Second)
+	db, err := database.Open(connectContext, cfg.DatabaseURL)
+	cancelConnect()
+	if err != nil {
+		logger.Error("connect database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
 
 	handler := httpapi.New(httpapi.Dependencies{
 		Logger:      logger,
 		StoragePath: cfg.StoragePath,
+		Database:    db,
 	})
 	server := &http.Server{
 		Addr:              cfg.ListenAddress,
