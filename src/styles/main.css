@@ -27,6 +27,19 @@ textarea {
 a {
   color: inherit;
 }
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  background: #172033;
+  color: white;
+  padding: 9px 14px;
+  border-radius: 7px;
+}
+.skip-link:focus {
+  top: 10px;
+}
 .app-header {
   height: 64px;
   display: flex;
@@ -555,6 +568,31 @@ textarea {
   }
   .page {
     padding: 16px;
+  }
+  .card-grid,
+  .token-grid {
+    grid-template-columns: 1fr;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .card-page__header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .inline-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .admin-list article {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dialog {
+    padding: 16px;
+  }
+  .board-column {
+    flex-basis: 86vw;
   }
 }
 @media (prefers-reduced-motion: reduce) {

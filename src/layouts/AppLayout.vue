@@ -10,6 +10,7 @@ async function logout() {
 </script>
 <template>
   <div class="app-shell">
+    <a class="skip-link" href="#main-content">К основному содержимому</a>
     <header class="app-header">
       <RouterLink class="brand" to="/">JKB</RouterLink>
       <nav aria-label="Основная навигация">
@@ -21,6 +22,6 @@ async function logout() {
         ><button class="button button--quiet" @click="logout">Выйти</button>
       </div>
     </header>
-    <main><RouterView /></main>
+    <main id="main-content" tabindex="-1"><RouterView /></main>
   </div>
 </template>
