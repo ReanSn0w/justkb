@@ -75,7 +75,13 @@ async function create() {
   }
 }
 async function patchUser(user: User, patch: unknown) {
-  await directoryApi.updateUser(user.id, patch)
+  await directoryApi.updateUser(user.id, {
+    display_name: user.display_name,
+    email: user.email || '',
+    role: user.role,
+    is_active: user.is_active,
+    ...(patch as Record<string, unknown>),
+  })
   await load()
 }
 async function password(user: User) {
@@ -101,13 +107,40 @@ async function moveColumn(index: number, delta: number) {
   await directoryApi.reorderColumns(next.map((x) => x.id))
   await load()
 }
-async function rename(kind: Exclude<Tab, 'users'>, item: { id: string; name: string }) {
+async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | Epic | Tag) {
   const value = prompt('Новое название', item.name)
   if (!value) return
-  if (kind === 'groups') await directoryApi.updateGroup(item.id, { name: value })
-  else if (kind === 'columns') await directoryApi.updateColumn(item.id, { name: value })
-  else if (kind === 'epics') await directoryApi.updateEpic(item.id, { name: value })
-  else await directoryApi.updateTag(item.id, { name: value })
+  if (kind === 'groups') {
+    const group = item as Group
+    await directoryApi.updateGroup(group.id, {
+      name: value,
+      color: group.color,
+      description: group.description,
+    })
+  } else if (kind === 'columns') {
+    const column = item as BoardColumn
+    await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
+  } else if (kind === 'epics') {
+    const epic = item as Epic
+    await directoryApi.updateEpic(epic.id, {
+      name: value,
+      color: epic.color,
+      description: epic.description,
+      is_archived: epic.is_archived,
+    })
+  } else {
+    const tag = item as Tag
+    await directoryApi.updateTag(tag.id, { name: value, color: tag.color })
+  }
+  await load()
+}
+async function toggleEpic(item: Epic) {
+  await directoryApi.updateEpic(item.id, {
+    name: item.name,
+    color: item.color,
+    description: item.description,
+    is_archived: !item.is_archived,
+  })
   await load()
 }
 </script>
@@ -175,11 +208,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: { id: string; name: str
           >
           <div>
             <button @click="rename('epics', item)">Переименовать</button
-            ><button
-              @click="
-                directoryApi.updateEpic(item.id, { is_archived: !item.is_archived }).then(load)
-              "
-            >
+            ><button @click="toggleEpic(item)">
               {{ item.is_archived ? 'Восстановить' : 'Архивировать' }}
             </button>
           </div>
