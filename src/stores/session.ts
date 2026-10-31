@@ -1,35 +1,38 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-
-export interface SessionUser {
-  id: string
-  username: string
-  display_name: string
-  role: 'admin' | 'member'
-  is_active: boolean
-}
+import { authApi, setCsrfToken, type User } from '../api'
 
 export const useSessionStore = defineStore('session', () => {
-  const user = ref<SessionUser | null>(null)
+  const user = ref<User | null>(null)
   const csrf = ref('')
   const ready = ref(false)
   async function restore() {
-    ready.value = true
+    try {
+      const result = await authApi.me()
+      user.value = result.user
+      csrf.value = result.csrf_token
+      setCsrfToken(csrf.value)
+    } catch {
+      user.value = null
+    } finally {
+      ready.value = true
+    }
   }
   async function login(_username: string, _password: string) {
-    void _password
-    user.value = {
-      id: 'local',
-      username: _username,
-      display_name: _username,
-      role: 'admin',
-      is_active: true,
-    }
-    csrf.value = 'development'
+    const result = await authApi.login(_username, _password)
+    user.value = result.user
+    csrf.value = result.csrf_token
+    setCsrfToken(csrf.value)
+    ready.value = true
   }
   async function logout() {
-    user.value = null
-    csrf.value = ''
+    try {
+      await authApi.logout()
+    } finally {
+      user.value = null
+      csrf.value = ''
+      setCsrfToken('')
+    }
   }
   return { user, csrf, ready, restore, login, logout }
 })
