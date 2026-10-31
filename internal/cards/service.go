@@ -455,7 +455,7 @@ const cardSelect = `
 	COALESCE((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY lower(t.name),t.id) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'::json),
 	COALESCE((SELECT json_agg(json_build_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',a.created_at) ORDER BY a.created_at,a.id) FROM attachments a WHERE a.card_id=c.id),'[]'::json),
 	(SELECT json_build_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
-	(SELECT json_build_object('id',g.id,'name',g.name) FROM groups g WHERE g.id=c.group_id),
+	(SELECT json_build_object('id',g.id,'name',g.name) FROM user_groups g WHERE g.id=c.group_id),
 	(SELECT json_build_object('id',u.id,'display_name',u.display_name) FROM users u WHERE u.id=c.assignee_id)
 	FROM cards c`
 

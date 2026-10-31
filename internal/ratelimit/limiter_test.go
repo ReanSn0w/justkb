@@ -8,8 +8,10 @@ import (
 func TestLimitAndReset(t *testing.T) {
 	t.Parallel()
 	limiter := New(2, time.Minute)
-	if !limiter.Allow("actor") || !limiter.Allow("actor") {
-		t.Fatal("initial attempts should pass")
+	for attempt := 1; attempt <= 2; attempt++ {
+		if !limiter.Allow("actor") {
+			t.Fatalf("initial attempt %d should pass", attempt)
+		}
 	}
 	if limiter.Allow("actor") {
 		t.Fatal("third attempt should fail")

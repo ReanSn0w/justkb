@@ -63,3 +63,10 @@ Run PostgreSQL and migrations, then start Go and Vite separately. Vite proxies
 `/api` and `/mcp` to port 8080. A production build is embedded automatically by
 the Dockerfile; locally, run `npm run build` before `go build ./cmd/jkb` when an
 all-in-one binary is needed.
+
+## Resource reference
+
+An idle Compose smoke run on 2026-10-31 (arm64 Docker VM, immediately after
+health, REST, attachment and MCP checks) reported about **72 MiB** for `app` and
+**28 MiB** for PostgreSQL. This is an orientation point, not an SLA: allocator,
+database cache, architecture and workload change the numbers.

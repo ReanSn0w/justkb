@@ -60,9 +60,13 @@ func (s *services) addTools(server *mcp.Server) {
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_epics", Description: "List EPIC projects.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		IncludeArchived bool `json:"include_archived,omitempty"`
-	}) (*mcp.CallToolResult, any, error) { if result := requireScope(ctx, "cards:read"); result != nil {
-		return result, nil, nil
-	}; items, err := s.board.ListEpics(ctx, input.IncludeArchived); return domainResult(items, err) })
+	}) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		items, err := s.board.ListEpics(ctx, input.IncludeArchived)
+		return domainResult(items, err)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
@@ -73,9 +77,13 @@ func (s *services) addTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{Name: "list_users", Description: "List assignable users without sensitive fields.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		GroupID         string `json:"group_id,omitempty"`
 		IncludeInactive bool   `json:"include_inactive,omitempty"`
-	}) (*mcp.CallToolResult, any, error) { if result := requireScope(ctx, "cards:read"); result != nil {
-		return result, nil, nil
-	}; items, err := s.board.ListUsers(ctx, input.IncludeInactive, input.GroupID); return domainResult(items, err) })
+	}) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		items, err := s.board.ListUsers(ctx, input.IncludeInactive, input.GroupID)
+		return domainResult(items, err)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_tags", Description: "List card tags.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
@@ -105,19 +113,30 @@ func (s *services) addTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{Name: "get_card", Description: "Get a card by UUID or JKB number.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		CardID     string `json:"card_id,omitempty"`
 		CardNumber string `json:"card_number,omitempty"`
-	}) (*mcp.CallToolResult, any, error) { if result := requireScope(ctx, "cards:read"); result != nil {
-		return result, nil, nil
-	}; identifier := input.CardID; if identifier == "" {
-		identifier = input.CardNumber
-	}; if identifier == "" {
-		return errorResult("validation_failed", map[string]any{"field": "card_id"}), nil, nil
-	}; item, err := s.cards.Get(ctx, identifier); return domainResult(item, err) })
+	}) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		identifier := input.CardID
+		if identifier == "" {
+			identifier = input.CardNumber
+		}
+		if identifier == "" {
+			return errorResult("validation_failed", map[string]any{"field": "card_id"}), nil, nil
+		}
+		item, err := s.cards.Get(ctx, identifier)
+		return domainResult(item, err)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "get_card_activity", Description: "Get recent card activity.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		CardID string `json:"card_id"`
 		Limit  int    `json:"limit,omitempty"`
-	}) (*mcp.CallToolResult, any, error) { if result := requireScope(ctx, "cards:read"); result != nil {
-		return result, nil, nil
-	}; items, err := s.cards.Activity(ctx, input.CardID, input.Limit); return domainResult(items, err) })
+	}) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		items, err := s.cards.Activity(ctx, input.CardID, input.Limit)
+		return domainResult(items, err)
+	})
 
 	type createInput struct {
 		Title       string     `json:"title"`
