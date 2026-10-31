@@ -1,16 +1,30 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useDebounceFn } from '@vueuse/core'
 import { useBoardStore } from '../stores/board'
 import CardTile from '../components/board/CardTile.vue'
+import BoardFilters from '../components/board/BoardFilters.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import { useToastStore } from '../stores/toasts'
 import type { Card } from '../api'
+import { filtersFromQuery, queryFromFilters } from '../features/filters'
 const board = useBoardStore(),
   toasts = useToastStore(),
   dragged = ref<Card | null>(null),
-  draft = ref<Record<string, string>>({})
-onMounted(() => board.initialize())
+  draft = ref<Record<string, string>>({}),
+  route = useRoute(),
+  router = useRouter()
+onMounted(async () => {
+  board.filters = filtersFromQuery(route.query)
+  await board.initialize()
+})
+const applyFilters = useDebounceFn(async () => {
+  await router.replace({ query: queryFromFilters(board.filters) })
+  await board.loadCards()
+}, 250)
+watch(() => board.filters, applyFilters, { deep: true })
 async function add(column: string) {
   const title = draft.value[column]?.trim()
   if (!title) return
@@ -49,6 +63,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
       </div>
       <BaseButton tone="quiet" @click="board.loadCards">Обновить</BaseButton>
     </header>
+    <BoardFilters />
     <StatusState v-if="board.loading" title="Загружаем доску…" tone="loading" /><StatusState
       v-else-if="board.error"
       :title="board.error"

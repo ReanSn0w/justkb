@@ -212,6 +212,41 @@ textarea {
 .board-heading h1 {
   margin-bottom: 0;
 }
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin: 14px 0;
+}
+.filters input {
+  flex: 1;
+  min-width: 180px;
+}
+.filters select {
+  max-width: 180px;
+}
+.tag-filter {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tag-choice {
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 99px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.tag-choice.selected {
+  background: #dce4ff;
+  border-color: #7691f2;
+  color: #203d9f;
+}
 .board {
   display: flex;
   gap: 14px;
