@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { epicsApi, type Epic } from '../api'
 import BaseButton from '../components/ui/BaseButton.vue'
+import BaseDialog from '../components/ui/BaseDialog.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import { useSessionStore } from '../stores/session'
@@ -16,6 +17,10 @@ const loading = ref(true)
 const error = ref('')
 const name = ref('')
 const description = ref('')
+const createDialogOpen = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const nameInput = ref<HTMLInputElement | null>(null)
 
 function completionPercent(epic: Epic) {
   if (!epic.card_count) return 0
@@ -44,7 +49,9 @@ async function load() {
 }
 
 async function create() {
-  if (!name.value.trim()) return
+  if (!name.value.trim() || creating.value) return
+  creating.value = true
+  createError.value = ''
   try {
     const epic = await epicsApi.create({
       name: name.value.trim(),
@@ -55,8 +62,24 @@ async function create() {
     toasts.show('Проект создан')
     await router.push(`/projects/${epic.id}`)
   } catch {
-    error.value = 'Не удалось создать проект'
+    createError.value = 'Не удалось создать проект'
+  } finally {
+    creating.value = false
   }
+}
+
+async function openCreateDialog() {
+  name.value = ''
+  description.value = ''
+  createError.value = ''
+  createDialogOpen.value = true
+  await nextTick()
+  nameInput.value?.focus()
+}
+
+function closeCreateDialog() {
+  if (creating.value) return
+  createDialogOpen.value = false
 }
 
 onMounted(load)
@@ -66,26 +89,9 @@ onMounted(load)
   <section class="section">
     <div class="container">
       <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
-      <form v-if="session.user?.role === 'admin'" class="box" @submit.prevent="create">
-        <h2 class="title is-5">Новый проект</h2>
-        <div class="columns is-align-items-flex-end">
-          <div class="column">
-            <BaseField label="Название">
-              <input v-model.trim="name" class="input" required />
-            </BaseField>
-          </div>
-          <div class="column is-half">
-            <BaseField label="Описание">
-              <textarea v-model.trim="description" class="textarea" rows="3" />
-            </BaseField>
-          </div>
-          <div class="column is-narrow">
-            <div class="field">
-              <div class="control"><BaseButton type="submit">Создать</BaseButton></div>
-            </div>
-          </div>
-        </div>
-      </form>
+      <div v-if="session.user?.role === 'admin'" class="is-flex is-justify-content-flex-end mb-5">
+        <BaseButton @click="openCreateDialog">Создать проект</BaseButton>
+      </div>
 
       <StatusState v-if="loading" title="Загружаем проекты…" tone="loading" />
       <StatusState v-else-if="!items.length" title="Проектов пока нет" />
@@ -122,6 +128,46 @@ onMounted(load)
           </progress>
         </RouterLink>
       </nav>
+
+      <BaseDialog :open="createDialogOpen" title="Создать проект" @close="closeCreateDialog">
+        <form id="create-project-form" @submit.prevent="create">
+          <div v-if="createError" class="notification is-danger" role="alert">
+            {{ createError }}
+          </div>
+          <BaseField label="Название" for-id="project-name">
+            <input
+              id="project-name"
+              ref="nameInput"
+              v-model.trim="name"
+              class="input"
+              required
+              :disabled="creating"
+            />
+          </BaseField>
+          <BaseField label="Описание" for-id="project-description">
+            <textarea
+              id="project-description"
+              v-model.trim="description"
+              class="textarea"
+              rows="8"
+              :disabled="creating"
+            />
+          </BaseField>
+        </form>
+        <template #actions>
+          <BaseButton
+            type="submit"
+            form="create-project-form"
+            :disabled="creating"
+            :class="{ 'is-loading': creating }"
+          >
+            Создать
+          </BaseButton>
+          <BaseButton class="ml-2" tone="quiet" :disabled="creating" @click="closeCreateDialog">
+            Отмена
+          </BaseButton>
+        </template>
+      </BaseDialog>
     </div>
   </section>
 </template>

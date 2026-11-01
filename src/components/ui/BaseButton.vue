@@ -6,6 +6,7 @@ const props = withDefaults(
     type?: 'button' | 'submit'
     tone?: 'primary' | 'quiet' | 'danger'
     disabled?: boolean
+    form?: string
   }>(),
   { type: 'button', tone: 'primary' },
 )
@@ -14,5 +15,7 @@ const toneClass = computed(
 )
 </script>
 <template>
-  <button :type="type" :class="['button', toneClass]" :disabled="disabled"><slot /></button>
+  <button :type="type" :class="['button', toneClass]" :disabled="disabled" :form="form">
+    <slot />
+  </button>
 </template>
