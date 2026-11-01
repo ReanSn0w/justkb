@@ -101,18 +101,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
                   >
                 </div>
               </header>
-              <div>
-                <div
-                  v-for="card in board.byColumn[column.id]"
-                  :key="card.id"
-                  @dragover.prevent.stop
-                  @drop.stop="drop(column.id, card.id)"
-                >
-                  <CardTile :card="card" @drag="dragged = $event" @move="keyboard(card, $event)" />
-                </div>
-                <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
-              </div>
-              <form class="field has-addons mt-4" @submit.prevent="add(column.id)">
+              <form class="field has-addons mb-4" @submit.prevent="add(column.id)">
                 <div class="control is-expanded">
                   <input
                     v-model="draft[column.id]"
@@ -125,6 +114,17 @@ async function keyboard(card: Card, direction: -1 | 1) {
                   <button class="button is-primary" aria-label="Создать карточку">+</button>
                 </div>
               </form>
+              <div>
+                <div
+                  v-for="card in board.byColumn[column.id]"
+                  :key="card.id"
+                  @dragover.prevent.stop
+                  @drop.stop="drop(column.id, card.id)"
+                >
+                  <CardTile :card="card" @drag="dragged = $event" @move="keyboard(card, $event)" />
+                </div>
+                <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
+              </div>
             </section>
           </div>
           <div class="section py-0 pl-0 ml-4 is-flex-shrink-0" aria-hidden="true"></div>
