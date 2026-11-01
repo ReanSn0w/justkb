@@ -14,4 +14,12 @@ describe('board filters', () => {
     expect(wrapper.get('[aria-live="polite"]').text()).toBe('Обновляем…')
     expect(wrapper.find('input[type="search"]').exists()).toBe(true)
   })
+
+  it('reserves space for the refresh indicator while idle', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const wrapper = mount(BoardFilters, { global: { plugins: [pinia] } })
+
+    expect(wrapper.get('[aria-live="polite"]').classes()).toContain('is-invisible')
+  })
 })

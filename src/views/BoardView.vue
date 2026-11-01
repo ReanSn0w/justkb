@@ -24,8 +24,18 @@ onMounted(async () => {
 })
 const applyFilters = useDebounceFn(async () => {
   if (!initialized.value) return
-  await router.replace({ query: queryFromFilters(board.filters) })
-  if (!(await board.loadCards())) toasts.show('Не удалось обновить задачи', 'error')
+  const activeFilters = {
+    ...board.filters,
+    tag_ids: board.filters.tag_ids ? [...board.filters.tag_ids] : undefined,
+  }
+  const [loaded] = await Promise.all([
+    board.loadCards(activeFilters),
+    router.replace({ query: queryFromFilters(activeFilters) }).then(
+      () => true,
+      () => false,
+    ),
+  ])
+  if (!loaded) toasts.show('Не удалось обновить задачи', 'error')
 }, 250)
 watch(
   () => board.filters,

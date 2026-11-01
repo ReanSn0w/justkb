@@ -76,7 +76,7 @@ describe('board store', () => {
       epic_id: 'project-1',
     })
   })
-  it('keeps the current board visible during a readable refresh state', async () => {
+  it('applies refreshed cards promptly while keeping a readable refresh state', async () => {
     vi.useFakeTimers()
     const store = useBoardStore()
     store.cards = [structuredClone(card)]
@@ -86,13 +86,35 @@ describe('board store', () => {
     })
 
     const refresh = store.loadCards()
-    await vi.advanceTimersByTimeAsync(399)
+    await vi.advanceTimersByTimeAsync(0)
     expect(store.refreshing).toBe(true)
-    expect(store.cards[0]?.title).toBe('A')
-    await vi.advanceTimersByTimeAsync(1)
+    expect(store.cards[0]?.title).toBe('Filtered result')
+    await vi.advanceTimersByTimeAsync(400)
     await expect(refresh).resolves.toBe(true)
     expect(store.refreshing).toBe(false)
     expect(store.cards[0]?.title).toBe('Filtered result')
+  })
+  it('ignores an outdated response after filters change', async () => {
+    vi.useFakeTimers()
+    const store = useBoardStore()
+    let resolveFirst!: (value: { items: Card[]; next_cursor: string | null }) => void
+    vi.mocked(cardsApi.list)
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce({
+        items: [{ ...card, id: '2', title: 'Current result' }],
+        next_cursor: null,
+      })
+
+    const first = store.loadCards({ q: 'first' })
+    store.filters.q = 'second'
+    const second = store.loadCards({ q: 'second' })
+    await vi.advanceTimersByTimeAsync(400)
+    await expect(second).resolves.toBe(true)
+    expect(store.cards[0]?.title).toBe('Current result')
+
+    resolveFirst({ items: [{ ...card, title: 'Outdated result' }], next_cursor: null })
+    await expect(first).resolves.toBe(true)
+    expect(store.cards[0]?.title).toBe('Current result')
   })
   it('preserves visible cards when a refresh fails', async () => {
     const store = useBoardStore()

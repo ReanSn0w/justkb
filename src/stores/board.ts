@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   ApiError,
@@ -28,6 +28,13 @@ export const useBoardStore = defineStore('board', () => {
     error = ref(''),
     filters = ref<CardFilters>({})
   let refreshSequence = 0
+  watch(
+    filters,
+    () => {
+      refreshSequence += 1
+    },
+    { deep: true, flush: 'sync' },
+  )
   const byColumn = computed(() =>
     Object.fromEntries(
       columns.value.map((column) => [
@@ -63,17 +70,16 @@ export const useBoardStore = defineStore('board', () => {
     }
     return items
   }
-  async function loadCards() {
+  async function loadCards(activeFilters: CardFilters = { ...filters.value }) {
     const sequence = ++refreshSequence
     const startedAt = Date.now()
-    const activeFilters = { ...filters.value }
     refreshing.value = true
     try {
       const items = await fetchCards(activeFilters)
-      const remaining = minimumRefreshDuration - (Date.now() - startedAt)
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining))
       if (sequence !== refreshSequence) return true
       cards.value = items
+      const remaining = minimumRefreshDuration - (Date.now() - startedAt)
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining))
       return true
     } catch {
       return sequence !== refreshSequence

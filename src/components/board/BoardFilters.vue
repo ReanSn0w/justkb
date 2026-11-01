@@ -19,7 +19,12 @@ function toggleTag(id: string) {
         <h2 class="title is-5 mb-0">Фильтры</h2>
       </div>
       <div class="level-right">
-        <span v-if="board.refreshing" class="tag is-primary" aria-live="polite"> Обновляем… </span>
+        <span
+          :class="['tag', 'is-primary', { 'is-invisible': !board.refreshing }]"
+          aria-live="polite"
+        >
+          Обновляем…
+        </span>
       </div>
     </header>
     <div class="field is-grouped is-grouped-multiline">
