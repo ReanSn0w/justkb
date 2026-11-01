@@ -3,13 +3,14 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 func Open(ctx context.Context, databasePath string) (*sql.DB, error) {
@@ -33,6 +34,7 @@ func Open(ctx context.Context, databasePath string) (*sql.DB, error) {
 	query.Add("_pragma", "journal_mode(WAL)")
 	query.Add("_pragma", "busy_timeout(5000)")
 	query.Add("_pragma", "synchronous(NORMAL)")
+	query.Set("_txlock", "immediate")
 	databaseURL.RawQuery = query.Encode()
 
 	db, err := sql.Open("sqlite", databaseURL.String())
@@ -51,4 +53,16 @@ func Open(ctx context.Context, databasePath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("secure database permissions: %w", err)
 	}
 	return db, nil
+}
+
+// BeginWrite starts a transaction that reserves SQLite's single writer slot
+// immediately. Open configures every connection with _txlock=immediate.
+func BeginWrite(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+	return db.BeginTx(ctx, nil)
+}
+
+// IsBusy reports a bounded SQLite writer-lock conflict.
+func IsBusy(err error) bool {
+	var sqliteErr *sqlite.Error
+	return errors.As(err, &sqliteErr) && sqliteErr.Code()&0xff == 5
 }

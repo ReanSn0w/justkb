@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -195,7 +196,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if actor.UserID == "" || strings.TrimSpace(input.Title) == "" || input.ColumnID == "" {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -204,7 +205,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 		return Card{}, err
 	}
 	var columnExists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1 FOR UPDATE`, input.ColumnID).Scan(&columnExists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&columnExists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Card{}, ErrValidation
 		}
@@ -338,7 +339,7 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if input.ExpectedVersion <= 0 {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -407,7 +408,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if input.ExpectedVersion <= 0 || input.TargetColumnID == "" || (input.BeforeCardID != "" && input.AfterCardID != "") {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -420,7 +421,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 		return Card{}, ErrVersionConflict
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1 FOR UPDATE`, input.TargetColumnID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.TargetColumnID).Scan(&exists); err != nil {
 		return Card{}, ErrValidation
 	}
 	position, err := movePosition(ctx, tx, input.TargetColumnID, cardID, input.BeforeCardID, input.AfterCardID)
@@ -444,7 +445,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 }
 
 func (s *Service) SetArchived(ctx context.Context, actor Actor, cardID string, expectedVersion int64, archived bool) (Card, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -665,7 +666,7 @@ func scanCard(row scanner) (Card, error) {
 }
 
 func getForUpdate(ctx context.Context, tx *sql.Tx, cardID string) (Card, error) {
-	row := tx.QueryRowContext(ctx, cardSelect+` WHERE c.id=$1 FOR UPDATE`, cardID)
+	row := tx.QueryRowContext(ctx, cardSelect+` WHERE c.id=$1`, cardID)
 	return scanCard(row)
 }
 

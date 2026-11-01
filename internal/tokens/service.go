@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -64,7 +65,7 @@ func (s *Service) Create(ctx context.Context, userID, name string, scopes []stri
 	if len(prefix) > 20 {
 		prefix = prefix[:20]
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Created{}, err
 	}

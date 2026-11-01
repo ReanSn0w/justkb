@@ -19,6 +19,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/comments"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
@@ -802,6 +803,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case appdb.IsBusy(err):
+		status, code, message = http.StatusServiceUnavailable, "database_busy", "Database is busy; retry the request"
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
 	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, avatars.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):

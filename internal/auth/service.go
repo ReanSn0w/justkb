@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -144,7 +145,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}

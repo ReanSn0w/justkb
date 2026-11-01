@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -125,7 +126,7 @@ func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, origi
 	if err != nil {
 		return Metadata{}, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Metadata{}, err
 	}
@@ -211,7 +212,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 			_ = os.Rename(tombstone, path)
 		}
 	}()
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}

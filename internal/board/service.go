@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -127,31 +128,21 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 	if strings.TrimSpace(email) != "" {
 		emailValue = strings.TrimSpace(email)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return User{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(1245651780)`); err != nil {
-		return User{}, err
-	}
 	var currentRole string
 	var currentActive bool
-	if err := tx.QueryRowContext(ctx, `SELECT role,is_active FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT role,is_active FROM users WHERE id=$1`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	} else if err != nil {
 		return User{}, err
 	}
 	if currentRole == "admin" && currentActive && (role != "admin" || !active) {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE role='admin' AND is_active FOR UPDATE`)
-		if err != nil {
-			return User{}, err
-		}
-		adminCount := 0
-		for rows.Next() {
-			adminCount++
-		}
-		if err := rows.Close(); err != nil {
+		var adminCount int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE role='admin' AND is_active`).Scan(&adminCount); err != nil {
 			return User{}, err
 		}
 		if adminCount <= 1 {
@@ -212,7 +203,7 @@ func (s *Service) SetUserActiveByUsername(ctx context.Context, username string, 
 }
 
 func (s *Service) SetUserGroups(ctx context.Context, userID string, groupIDs []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
@@ -238,7 +229,7 @@ func (s *Service) ResetUserPassword(ctx context.Context, userID, password string
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
@@ -356,7 +347,7 @@ func (s *Service) ReorderColumns(ctx context.Context, ids []string) error {
 	if strings.Join(wanted, ",") != strings.Join(existing, ",") {
 		return ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
