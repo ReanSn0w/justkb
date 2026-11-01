@@ -15,6 +15,13 @@ vi.mock('../../api', async () => {
 describe('backup settings', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('describes the SQLite backup contents', () => {
+    const wrapper = mount(BackupSettings, { global: { plugins: [createPinia()] } })
+
+    expect(wrapper.text()).toContain('snapshot SQLite')
+    expect(wrapper.text()).not.toContain('PostgreSQL')
+  })
+
   it('requires explicit confirmation before restoring', async () => {
     vi.stubGlobal(
       'confirm',
