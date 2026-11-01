@@ -139,7 +139,7 @@ async function cancelEdit() {
               <StatusState v-else title="Описание пока не добавлено" />
             </div>
 
-            <CommentPanel :entity-id="epic.id" entity-type="project" />
+            <CommentPanel v-if="!editing" :entity-id="epic.id" entity-type="project" />
           </div>
 
           <div class="column">

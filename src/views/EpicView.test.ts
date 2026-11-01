@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardsApi, directoryApi, epicsApi, type Card } from '../api'
 import EpicView from './EpicView.vue'
 
+const mockedRoute = vi.hoisted(() => ({ name: 'project', params: { id: 'project-1' } }))
+
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
   return {
     ...actual,
-    useRoute: () => ({ name: 'project', params: { id: 'project-1' } }),
+    useRoute: () => mockedRoute,
     useRouter: () => ({ push: vi.fn() }),
   }
 })
@@ -39,6 +41,7 @@ const card = (id: string, column_id: string): Card => ({
 
 describe('project details', () => {
   beforeEach(() => {
+    mockedRoute.name = 'project'
     setActivePinia(createPinia())
     vi.clearAllMocks()
     vi.mocked(epicsApi.get).mockResolvedValue({
@@ -87,5 +90,22 @@ describe('project details', () => {
     expect(wrapper.text()).toContain('Done')
     expect(wrapper.findAll('progress').map((item) => item.attributes('value'))).toEqual(['2', '1'])
     expect(wrapper.text()).not.toContain('Task 1')
+  })
+
+  it('hides comments while editing the project', async () => {
+    mockedRoute.name = 'project-edit'
+    const wrapper = mount(EpicView, {
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          AttachmentPanel: true,
+          CommentPanel: true,
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('comment-panel-stub').exists()).toBe(false)
   })
 })

@@ -179,6 +179,13 @@ function toggleTag(id: string) {
               <h1 class="title">{{ card.title }}</h1>
               <div v-if="card.description" class="content" v-html="html"></div>
               <StatusState v-else title="Описание пока не добавлено" />
+              <hr />
+              <AttachmentPanel
+                :entity-id="card.id"
+                entity-type="card"
+                :attachments="card.attachments || []"
+                readonly
+              />
             </article>
             <CardInfoPanel
               v-if="!editing"
@@ -186,7 +193,7 @@ function toggleTag(id: string) {
               :card="card"
               :column-name="columnName"
             />
-            <CommentPanel :entity-id="card.id" entity-type="card" />
+            <CommentPanel v-if="!editing" :entity-id="card.id" entity-type="card" />
           </div>
           <div class="column">
             <CardInfoPanel
@@ -195,15 +202,15 @@ function toggleTag(id: string) {
               :card="card"
               :column-name="columnName"
             />
-            <aside class="box">
+            <aside v-if="editing" class="box">
               <AttachmentPanel
                 :entity-id="card.id"
                 entity-type="card"
                 :attachments="card.attachments || []"
-                :readonly="!editing"
                 @change="card.attachments = $event"
               />
-              <hr />
+            </aside>
+            <aside class="box">
               <h2 class="title is-5">История</h2>
               <div class="content">
                 <ol>
