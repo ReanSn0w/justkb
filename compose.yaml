@@ -15,6 +15,7 @@ services:
     restart: unless-stopped
 
   app:
+    image: ${JKB_IMAGE:-ghcr.io/reansn0w/justkb:latest}
     build:
       context: .
     environment:

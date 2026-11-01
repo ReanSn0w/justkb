@@ -47,6 +47,11 @@ MCP-клиент ────┘          │
 Frontend собирается Vite и встраивается в Go-бинарник. В production достаточно
 контейнера JKB, PostgreSQL и volume для файлов.
 
+Готовый multi-platform образ публикуется в GitHub Container Registry:
+[`ghcr.io/reansn0w/justkb`](https://github.com/ReanSn0w/justkb/pkgs/container/justkb).
+Для обычного развёртывания используйте `latest`, а для воспроизводимого — тег
+конкретного релиза, например `ghcr.io/reansn0w/justkb:1.0.0`.
+
 Основной стек:
 
 - Go 1.26;
@@ -68,12 +73,17 @@ Frontend собирается Vite и встраивается в Go-бинар�
    Задайте в `.env` длинный случайный `POSTGRES_PASSWORD`. Для публичного
    развёртывания оставьте `JKB_COOKIE_SECURE=true`.
 
-2. Соберите приложение и запустите PostgreSQL:
+2. Загрузите готовый образ и запустите PostgreSQL:
 
    ```sh
-   docker compose build
+   docker compose pull app
    docker compose up -d db
    ```
+
+   По умолчанию Compose использует `ghcr.io/reansn0w/justkb:latest`. Чтобы
+   закрепить версию, задайте, например,
+   `JKB_IMAGE=ghcr.io/reansn0w/justkb:1.0.0` в `.env`. Для сборки текущего
+   исходного кода вместо опубликованного образа выполните `docker compose build app`.
 
 3. Примените миграции:
 
@@ -214,23 +224,27 @@ API-токены используются MCP endpoint. Контракт сущ�
 
 ### Переменные Compose
 
-| Переменная          | Значение по умолчанию   | Назначение                    |
-| ------------------- | ----------------------- | ----------------------------- |
-| `POSTGRES_PASSWORD` | —                       | пароль PostgreSQL; обязателен |
-| `JKB_PORT`          | `8080`                  | порт приложения на хосте      |
-| `JKB_SYSTEM_NAME`   | `JKB`                   | имя системы в web-интерфейсе  |
-| `JKB_PUBLIC_URL`    | `http://localhost:8080` | зарезервированный внешний URL |
-| `JKB_COOKIE_SECURE` | `true`                  | secure-флаг cookie            |
+| Переменная          | Значение по умолчанию            | Назначение                    |
+| ------------------- | -------------------------------- | ----------------------------- |
+| `POSTGRES_PASSWORD` | —                                | пароль PostgreSQL; обязателен |
+| `JKB_IMAGE`         | `ghcr.io/reansn0w/justkb:latest` | образ приложения              |
+| `JKB_PORT`          | `8080`                           | порт приложения на хосте      |
+| `JKB_SYSTEM_NAME`   | `JKB`                            | имя системы в web-интерфейсе  |
+| `JKB_PUBLIC_URL`    | `http://localhost:8080`          | зарезервированный внешний URL |
+| `JKB_COOKIE_SECURE` | `true`                           | secure-флаг cookie            |
 
 ## Обновление
 
 Перед обновлением сделайте резервную копию, затем:
 
 ```sh
-docker compose build
+docker compose pull app
 docker compose run --rm app /usr/local/bin/jkb-migrate up
 docker compose up -d app
 ```
+
+Для перехода на определённый релиз сначала измените `JKB_IMAGE` в `.env`,
+например на `ghcr.io/reansn0w/justkb:1.0.0`, и затем выполните те же команды.
 
 Миграции выполняются отдельно и не запускаются скрыто при старте приложения.
 Это позволяет контролировать порядок deployment. `jkb-migrate down` используйте
@@ -303,6 +317,28 @@ npm run build
 go build ./cmd/jkb
 ```
 
+## CI и публикация образов
+
+GitHub Actions запускает backend- и frontend-проверки для pull request, `master`
+и тегов вида `v1.0.0`. Контейнер собирается только после успешного прохождения
+обоих наборов проверок для `linux/amd64` и `linux/arm64`.
+
+- push в `master` публикует `ghcr.io/reansn0w/justkb:latest` и тег `sha-*`;
+- push тега `v1.0.0` публикует `1.0.0`, `1.0`, `1` и `latest`;
+- pull request проверяет сборку образа, но ничего не публикует.
+
+После первой публикации владелец репозитория должен один раз сделать пакет
+публичным в настройках GitHub Packages. До этого `docker pull` потребует входа
+в GHCR, даже если сам репозиторий публичный.
+
+Создание релиза:
+
+```sh
+git tag -a v1.0.0 -m "v1.0.0"
+git push origin v1.0.0
+docker pull ghcr.io/reansn0w/justkb:1.0.0
+```
+
 ## Проверки
 
 Backend:
@@ -336,7 +372,12 @@ migrations/             SQL-миграции Goose
 src/                    Vue-приложение
 CONTRACT.md             контракт продукта, REST и MCP
 compose.yaml            локальное и компактное production-развёртывание
+LICENSE                 лицензия MIT
 ```
+
+## Лицензия
+
+Проект распространяется по [лицензии MIT](LICENSE).
 
 ## Ориентир по ресурсам
 
