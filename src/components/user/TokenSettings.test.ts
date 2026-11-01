@@ -1,15 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
-import TokensView from './TokensView.vue'
-import { tokensApi } from '../api'
+import { tokensApi } from '../../api'
+import TokenSettings from './TokenSettings.vue'
 
-vi.mock('../api', async () => {
-  const actual = await vi.importActual<typeof import('../api')>('../api')
+vi.mock('../../api', async () => {
+  const actual = await vi.importActual<typeof import('../../api')>('../../api')
   return { ...actual, tokensApi: { list: vi.fn(), create: vi.fn(), revoke: vi.fn() } }
 })
 
-describe('token lifecycle', () => {
+describe('token settings', () => {
   it('shows a newly issued secret only until dialog closes', async () => {
     vi.mocked(tokensApi.list).mockResolvedValue({ items: [], next_cursor: null })
     vi.mocked(tokensApi.create).mockResolvedValue({
@@ -21,7 +21,7 @@ describe('token lifecycle', () => {
       created_at: '',
       updated_at: '',
     })
-    const wrapper = mount(TokensView, {
+    const wrapper = mount(TokenSettings, {
       global: {
         plugins: [createPinia()],
         stubs: {

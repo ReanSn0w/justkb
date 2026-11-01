@@ -43,7 +43,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('./views/SettingsView.vue'),
         meta: { admin: true },
       },
-      { path: 'tokens', name: 'tokens', component: () => import('./views/TokensView.vue') },
+      { path: 'tokens', redirect: { name: 'profile', query: { tab: 'tokens' } } },
       { path: 'profile', name: 'profile', component: () => import('./views/ProfileView.vue') },
     ],
   },

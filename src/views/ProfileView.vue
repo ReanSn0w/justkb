@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api'
+import TokenSettings from '../components/user/TokenSettings.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
@@ -9,6 +11,18 @@ import { useToastStore } from '../stores/toasts'
 
 const session = useSessionStore()
 const toasts = useToastStore()
+const route = useRoute()
+const router = useRouter()
+type Tab = 'profile' | 'security' | 'tokens'
+const labels: Record<Tab, string> = {
+  profile: 'Профиль',
+  security: 'Безопасность',
+  tokens: 'API-токены',
+}
+const tab = computed<Tab>(() => {
+  const value = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
+  return value === 'security' || value === 'tokens' ? value : 'profile'
+})
 const displayName = ref(session.user?.display_name || '')
 const avatar = ref<File | null>(null)
 const profileError = ref('')
@@ -17,6 +31,12 @@ const current = ref('')
 const next = ref('')
 const confirm = ref('')
 const passwordError = ref('')
+
+async function selectTab(value: Tab) {
+  await router.replace({
+    query: { ...route.query, tab: value === 'profile' ? undefined : value },
+  })
+}
 
 async function saveProfile() {
   const value = displayName.value.trim()
@@ -103,10 +123,17 @@ async function savePassword() {
 <template>
   <section class="section">
     <div class="container">
-      <div class="columns is-centered">
+      <nav class="tabs is-boxed" aria-label="Разделы настроек пользователя">
+        <ul>
+          <li v-for="(label, key) in labels" :key="key" :class="{ 'is-active': tab === key }">
+            <a @click="selectTab(key)">{{ label }}</a>
+          </li>
+        </ul>
+      </nav>
+
+      <div v-if="tab === 'profile'" class="columns is-centered">
         <div class="column is-two-thirds-tablet is-half-desktop">
           <form class="box" @submit.prevent="saveProfile">
-            <h1 class="title is-4">Профиль</h1>
             <article class="media">
               <div class="media-left">
                 <UserAvatar :user="session.user" :size="96" />
@@ -149,9 +176,12 @@ async function savePassword() {
             </div>
             <BaseButton type="submit" :disabled="profileBusy">Сохранить профиль</BaseButton>
           </form>
+        </div>
+      </div>
 
+      <div v-else-if="tab === 'security'" class="columns is-centered">
+        <div class="column is-two-thirds-tablet is-half-desktop">
           <form class="box" @submit.prevent="savePassword">
-            <h2 class="title is-5">Пароль</h2>
             <BaseField label="Текущий пароль">
               <input
                 v-model="current"
@@ -188,6 +218,8 @@ async function savePassword() {
           </form>
         </div>
       </div>
+
+      <TokenSettings v-else />
     </div>
   </section>
 </template>

@@ -41,13 +41,6 @@ async function logout() {
           >Проекты</RouterLink
         >
         <RouterLink
-          class="navbar-item"
-          active-class="is-active"
-          to="/tokens"
-          @click="menuOpen = false"
-          >API-токены</RouterLink
-        >
-        <RouterLink
           v-if="session.user?.role === 'admin'"
           class="navbar-item"
           active-class="is-active"
