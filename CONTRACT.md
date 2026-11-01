@@ -44,7 +44,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | User | `id`, `username`, `display_name`, `role`, `is_active` | `email`, `avatar_url` |
 | Group | `id`, `name`, `color` | `description` |
 | Column | `id`, `name`, `position` | `wip_limit` |
-| Project (`Epic` в API) | `id`, `name`, `color`, `is_archived`, `card_count` | `description`, `attachments` |
+| Project (`Epic` в API) | `id`, `name`, `color`, `is_archived`, `card_count`, `completed_card_count` | `description`, `attachments` |
 | Tag | `id`, `name`, `color` | — |
 | Card | `id`, `number`, `title`, `description`, `column_id`, `position`, `version`, `is_archived` | `epic_id`, `group_id`, `assignee_id`, `due_at` |
 | Attachment | `id`, `original_name`, `media_type`, `size`, `created_by` | `card_id` или `epic_id` |

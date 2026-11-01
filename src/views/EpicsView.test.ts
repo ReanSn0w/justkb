@@ -14,7 +14,7 @@ vi.mock('../api', async () => {
 })
 
 describe('project directory', () => {
-  it('shows project descriptions and task counts', async () => {
+  it('shows projects as progress rows without full descriptions', async () => {
     vi.mocked(epicsApi.list).mockResolvedValue({
       items: [
         {
@@ -24,6 +24,7 @@ describe('project directory', () => {
           color: '#00d1b2',
           is_archived: false,
           card_count: 3,
+          completed_card_count: 2,
           created_at: '',
           updated_at: '',
         },
@@ -51,7 +52,9 @@ describe('project directory', () => {
     await flushPromises()
     expect(epicsApi.list).toHaveBeenCalledWith(true)
     expect(wrapper.text()).toContain('Platform')
-    expect(wrapper.text()).toContain('Shared services')
-    expect(wrapper.text()).toContain('3 задач')
+    expect(wrapper.text()).not.toContain('Shared services')
+    expect(wrapper.text()).toContain('3 задачи')
+    expect(wrapper.text()).toContain('2 из 3 в последней колонке')
+    expect(wrapper.get('progress').attributes('value')).toBe('67')
   })
 })

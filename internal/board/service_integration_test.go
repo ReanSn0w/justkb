@@ -87,3 +87,53 @@ func TestReferenceDataIntegration(t *testing.T) {
 		t.Fatalf("first column = %s, want %s", reordered[0].ID, ids[0])
 	}
 }
+
+func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	service := NewService(db)
+	user, err := service.CreateUser(ctx, "reporter", "Reporter", "", "member", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	epic, err := service.SaveEpic(ctx, "", "Delivery", "#00D1B2", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	columns, err := service.ListColumns(ctx)
+	if err != nil || len(columns) < 2 {
+		t.Fatalf("columns=%#v err=%v", columns, err)
+	}
+	firstColumn := columns[0].ID
+	lastColumn := columns[len(columns)-1].ID
+	for _, card := range []struct {
+		id       string
+		number   int
+		columnID string
+		archived bool
+	}{
+		{id: "card-backlog", number: 1, columnID: firstColumn},
+		{id: "card-done", number: 2, columnID: lastColumn},
+		{id: "card-archived", number: 3, columnID: lastColumn, archived: true},
+	} {
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO cards (id,number,title,column_id,epic_id,position,is_archived,created_by)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			card.id, card.number, card.id, card.columnID, epic.ID, card.number*1000, card.archived, user.ID,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, err := service.ListEpics(ctx, false)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("epics=%#v err=%v", items, err)
+	}
+	if items[0].CardCount != 2 || items[0].CompletedCardCount != 1 {
+		t.Fatalf("epic progress=%#v", items[0])
+	}
+	detail, err := service.GetEpic(ctx, epic.ID)
+	if err != nil || detail.CardCount != 2 || detail.CompletedCardCount != 1 {
+		t.Fatalf("epic detail=%#v err=%v", detail, err)
+	}
+}

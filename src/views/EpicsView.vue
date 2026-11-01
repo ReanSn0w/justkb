@@ -17,6 +17,20 @@ const error = ref('')
 const name = ref('')
 const description = ref('')
 
+function completionPercent(epic: Epic) {
+  if (!epic.card_count) return 0
+  return Math.min(100, Math.round((epic.completed_card_count / epic.card_count) * 100))
+}
+
+function taskLabel(count: number) {
+  const mod100 = count % 100
+  const mod10 = count % 10
+  if (mod100 >= 11 && mod100 <= 14) return `${count} задач`
+  if (mod10 === 1) return `${count} задача`
+  if (mod10 >= 2 && mod10 <= 4) return `${count} задачи`
+  return `${count} задач`
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -61,8 +75,8 @@ onMounted(load)
             </BaseField>
           </div>
           <div class="column is-half">
-            <BaseField label="Краткое описание">
-              <input v-model.trim="description" class="input" />
+            <BaseField label="Описание">
+              <textarea v-model.trim="description" class="textarea" rows="3" />
             </BaseField>
           </div>
           <div class="column is-narrow">
@@ -75,30 +89,39 @@ onMounted(load)
 
       <StatusState v-if="loading" title="Загружаем проекты…" tone="loading" />
       <StatusState v-else-if="!items.length" title="Проектов пока нет" />
-      <div v-else class="columns is-multiline">
-        <div
+      <nav v-else class="panel" aria-label="Проекты">
+        <RouterLink
           v-for="epic in items"
           :key="epic.id"
-          class="column is-half-tablet is-one-third-desktop"
+          :to="`/projects/${epic.id}`"
+          class="panel-block is-block py-5"
         >
-          <RouterLink :to="`/projects/${epic.id}`" class="card is-block">
-            <div class="card-content">
-              <div class="level is-mobile mb-4">
-                <div class="level-left">
-                  <h2 class="title is-5 mb-0">{{ epic.name }}</h2>
-                </div>
-                <div class="level-right">
-                  <span class="tag is-link">{{ epic.card_count }} задач</span>
-                </div>
-              </div>
-              <p class="has-text-grey">
-                {{ epic.description || 'Описание пока не добавлено.' }}
-              </p>
-              <span v-if="epic.is_archived" class="tag mt-4">В архиве</span>
+          <div class="level mb-3">
+            <div class="level-left">
+              <h2 class="title is-5 mb-0">{{ epic.name }}</h2>
             </div>
-          </RouterLink>
-        </div>
-      </div>
+            <div class="level-right">
+              <div class="tags">
+                <span v-if="epic.is_archived" class="tag">В архиве</span>
+                <span class="tag is-primary">{{ taskLabel(epic.card_count) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="level is-mobile mb-2">
+            <div class="level-left">
+              <span class="is-size-7 has-text-grey">
+                {{ epic.completed_card_count }} из {{ epic.card_count }} в последней колонке
+              </span>
+            </div>
+            <div class="level-right">
+              <strong class="is-size-7">{{ completionPercent(epic) }}%</strong>
+            </div>
+          </div>
+          <progress class="progress is-primary is-small" :value="completionPercent(epic)" max="100">
+            {{ completionPercent(epic) }}%
+          </progress>
+        </RouterLink>
+      </nav>
     </div>
   </section>
 </template>

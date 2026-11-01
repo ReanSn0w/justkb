@@ -50,14 +50,15 @@ type Column struct {
 }
 
 type Epic struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description"`
-	Color       string    `json:"color"`
-	IsArchived  bool      `json:"is_archived"`
-	CardCount   int       `json:"card_count"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Description        *string   `json:"description"`
+	Color              string    `json:"color"`
+	IsArchived         bool      `json:"is_archived"`
+	CardCount          int       `json:"card_count"`
+	CompletedCardCount int       `json:"completed_card_count"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Tag struct {
@@ -384,7 +385,11 @@ func (s *Service) DeleteColumn(ctx context.Context, id string) error {
 func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
-		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived)
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
+		       (SELECT count(*)
+		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
+		         WHERE c.epic_id=e.id AND NOT c.is_archived
+		           AND bc.position=(SELECT max(position) FROM board_columns))
 		FROM epics e WHERE $1 OR NOT e.is_archived
 		ORDER BY e.is_archived,lower(e.name),e.id`, includeArchived)
 	if err != nil {
@@ -394,7 +399,7 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 	items := make([]Epic, 0)
 	for rows.Next() {
 		var item Epic
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.CreatedAt, &item.UpdatedAt, &item.CardCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -406,10 +411,14 @@ func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	var item Epic
 	err := s.db.QueryRowContext(ctx, `
 		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
-		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived)
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
+		       (SELECT count(*)
+		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
+		         WHERE c.epic_id=e.id AND NOT c.is_archived
+		           AND bc.position=(SELECT max(position) FROM board_columns))
 		FROM epics e WHERE e.id=$1`, id).Scan(
 		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived,
-		&item.CreatedAt, &item.UpdatedAt, &item.CardCount,
+		&item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Epic{}, ErrNotFound

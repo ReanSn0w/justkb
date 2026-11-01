@@ -33,6 +33,7 @@ export interface Epic extends Timestamps {
   description?: string | null
   is_archived: boolean
   card_count: number
+  completed_card_count: number
   attachments?: Attachment[]
 }
 export interface Tag extends Timestamps {
