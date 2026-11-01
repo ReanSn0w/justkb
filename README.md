@@ -1,58 +1,213 @@
 # JKB
 
-JKB is a compact single-board Kanban service: a Go binary with an embedded Vue
-frontend, PostgreSQL, local attachment storage, personal API tokens and a
-stateless remote MCP endpoint.
+JKB — компактная однодосочная Kanban-система для небольшой команды. Она состоит
+из одного Go-приложения со встроенным Vue-интерфейсом, PostgreSQL и локального
+каталога для файлов. Дополнительно приложение предоставляет HTTP API и remote
+MCP endpoint для работы AI-агентов.
 
-## Production-style Compose start
+Проект сознательно не пытается быть ещё одной Taiga или Jira: одна доска,
+минимум инфраструктуры и никаких обязательных S3, Redis, очередей или отдельных
+frontend-контейнеров.
 
-No credential is committed. Copy `.env.example` to `.env`, set a long random
-`POSTGRES_PASSWORD`, and set `JKB_PUBLIC_URL` to the externally visible HTTPS
-origin. Keep `JKB_COOKIE_SECURE=true` behind HTTPS; the example disables it only
-for local HTTP.
+## Возможности
+
+- одна Kanban-доска с настраиваемыми колонками и drag-and-drop;
+- проекты для группировки и фильтрации задач;
+- группы пользователей, исполнители и теги;
+- описания и комментарии с безопасным Markdown;
+- вложения к задачам и проектам в локальном хранилище;
+- профили с отображаемым именем и аватаром;
+- роли `admin` и `member`;
+- персональные API-токены с отдельными правами чтения и изменения;
+- remote MCP для агентов;
+- история изменений карточек и optimistic locking;
+- health checks, явные миграции и административный CLI.
+
+## Границы проекта
+
+- В системе одна доска. Проекты не создают отдельные доски, а используются как
+  фильтр и логическая область задач.
+- Самостоятельной регистрации нет. Пользователей создаёт администратор через
+  CLI или административный интерфейс.
+- PostgreSQL — единственная внешняя служба.
+- Вложения и аватары хранятся на локальном диске. Для нескольких реплик
+  понадобится общее файловое хранилище или отдельная реализация storage layer.
+- HTTPS завершается на reverse proxy перед приложением.
+
+## Архитектура
+
+```text
+Браузер ───────┐
+               ├──> JKB (Go HTTP server) ───> PostgreSQL
+MCP-клиент ────┘          │
+                          └───────────────> локальное хранилище файлов
+```
+
+Frontend собирается Vite и встраивается в Go-бинарник. В production достаточно
+контейнера JKB, PostgreSQL и volume для файлов.
+
+Основной стек:
+
+- Go 1.26;
+- Vue 3, TypeScript, Pinia и Vue Router;
+- Bulma без собственного CSS;
+- PostgreSQL 17;
+- официальный Go SDK для MCP.
+
+## Быстрый запуск через Docker Compose
+
+Понадобятся Docker и Docker Compose.
+
+1. Подготовьте конфигурацию:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+   Задайте в `.env` длинный случайный `POSTGRES_PASSWORD`. Для публичного
+   развёртывания оставьте `JKB_COOKIE_SECURE=true`.
+
+2. Соберите приложение и запустите PostgreSQL:
+
+   ```sh
+   docker compose build
+   docker compose up -d db
+   ```
+
+3. Примените миграции:
+
+   ```sh
+   docker compose run --rm app /usr/local/bin/jkb-migrate up
+   ```
+
+4. Создайте первого администратора:
+
+   ```sh
+   docker compose run --rm app /usr/local/bin/jkb-admin user add \
+     --role admin \
+     --display-name "Administrator" \
+     admin
+   ```
+
+   Команда интерактивно запросит пароль и его подтверждение. Пароль не
+   передаётся через аргументы и не выводится в терминал.
+
+5. Запустите приложение:
+
+   ```sh
+   docker compose up -d app
+   ```
+
+По умолчанию JKB будет доступен на [http://localhost:8080](http://localhost:8080).
+
+Проверить состояние контейнеров:
+
+```sh
+docker compose ps
+curl --fail http://localhost:8080/health/ready
+```
+
+## Административный CLI
+
+`jkb-admin` предназначен для bootstrap и операций, которые не требуют отдельного
+веб-интерфейса.
+
+Создание обычного пользователя:
+
+```sh
+docker compose run --rm app /usr/local/bin/jkb-admin user add \
+  --display-name "Ada Lovelace" \
+  --email ada@example.test \
+  ada
+```
+
+Роль по умолчанию — `member`. Для администратора передайте `--role admin`.
+Отображаемое имя по умолчанию совпадает с логином, email необязателен.
+
+Справка:
+
+```sh
+docker compose run --rm app /usr/local/bin/jkb-admin --help
+docker compose run --rm app /usr/local/bin/jkb-admin user add --help
+```
+
+## Remote MCP
+
+MCP endpoint находится по адресу:
+
+```text
+https://jkb.example.com/mcp
+```
+
+Персональный токен выпускается в настройках профиля на вкладке «API-токены».
+Клиент должен передавать его в HTTP-заголовке:
+
+```http
+Authorization: Bearer jkb_pat_…
+```
+
+Доступные scopes:
+
+- `cards:read` — чтение доски, справочников, проектов, задач и комментариев;
+- `cards:write` — создание и изменение задач, комментариев и связанных данных.
+
+Не добавляйте токены в URL, Git-репозиторий или общие конфигурационные файлы.
+Полный перечень MCP tools и формат ошибок описаны в [CONTRACT.md](CONTRACT.md#5-mcp-api).
+
+## HTTP API
+
+- REST API: `/api/v1`;
+- remote MCP: `/mcp`;
+- liveness: `/health/live`;
+- readiness: `/health/ready`.
+
+Веб-интерфейс и REST API используют cookie-сессию и CSRF-защиту. Персональные
+API-токены используются MCP endpoint. Контракт сущностей, REST endpoints, ролей
+и ошибок находится в [CONTRACT.md](CONTRACT.md).
+
+## Конфигурация
+
+### Переменные приложения
+
+| Переменная                 | Обязательна | Значение по умолчанию | Назначение                                   |
+| -------------------------- | ----------: | --------------------- | -------------------------------------------- |
+| `JKB_DATABASE_URL`         |          да | —                     | PostgreSQL connection URL                    |
+| `JKB_STORAGE_PATH`         |         нет | `./storage`           | каталог вложений и аватаров                  |
+| `JKB_LISTEN_ADDRESS`       |         нет | `:8080`               | адрес HTTP-сервера                           |
+| `JKB_PUBLIC_URL`           |         нет | —                     | зарезервированный внешний origin приложения  |
+| `JKB_COOKIE_SECURE`        |         нет | `true`                | отправлять session cookie только через HTTPS |
+| `JKB_ATTACHMENT_MAX_BYTES` |         нет | `26214400`            | максимальный размер вложения                 |
+| `JKB_SHUTDOWN_TIMEOUT`     |         нет | `15s`                 | таймаут graceful shutdown                    |
+
+Аватар ограничен 5 МБ независимо от `JKB_ATTACHMENT_MAX_BYTES`.
+
+### Переменные Compose
+
+| Переменная          | Значение по умолчанию   | Назначение                    |
+| ------------------- | ----------------------- | ----------------------------- |
+| `POSTGRES_PASSWORD` | —                       | пароль PostgreSQL; обязателен |
+| `JKB_PORT`          | `8080`                  | порт приложения на хосте      |
+| `JKB_PUBLIC_URL`    | `http://localhost:8080` | зарезервированный внешний URL |
+| `JKB_COOKIE_SECURE` | `true`                  | secure-флаг cookie            |
+
+## Обновление
+
+Перед обновлением сделайте резервную копию, затем:
 
 ```sh
 docker compose build
-docker compose up -d db
 docker compose run --rm app /usr/local/bin/jkb-migrate up
-docker compose run --rm app /usr/local/bin/jkb-admin user add \
-  --role admin --display-name "Administrator" admin
 docker compose up -d app
 ```
 
-The admin command requests and confirms the password interactively and never
-prints it. The same command can create regular users; `--role` defaults to
-`member`, while `--email` and `--display-name` are optional:
+Миграции выполняются отдельно и не запускаются скрыто при старте приложения.
+Это позволяет контролировать порядок deployment. `jkb-migrate down` используйте
+только после проверки конкретной rollback-миграции и резервной копии.
 
-```sh
-docker compose run --rm app /usr/local/bin/jkb-admin user add \
-  --display-name "Ada Lovelace" --email ada@example.test ada
-```
+## Резервное копирование
 
-Run `jkb-admin --help` or `jkb-admin user add --help` to inspect the CLI.
-Migrations are intentionally explicit, making deploy and rollback order
-observable. Use `jkb-migrate down` only after checking the migration impact.
-
-The application is available on `JKB_PORT` (8080 by default), health endpoints
-are `/health/live` and `/health/ready`, REST is under `/api/v1`, and remote MCP
-is `/mcp` with `Authorization: Bearer jkb_pat_…`.
-
-## Configuration
-
-| Variable                   | Required   | Default     | Meaning                              |
-| -------------------------- | ---------- | ----------- | ------------------------------------ |
-| `JKB_DATABASE_URL`         | yes        | —           | PostgreSQL connection URL            |
-| `JKB_STORAGE_PATH`         | yes        | `./storage` | local attachment root                |
-| `JKB_LISTEN_ADDRESS`       | no         | `:8080`     | HTTP listen address                  |
-| `JKB_PUBLIC_URL`           | deployment | —           | externally visible origin            |
-| `JKB_COOKIE_SECURE`        | no         | `true`      | send session cookies only over HTTPS |
-| `JKB_ATTACHMENT_MAX_BYTES` | no         | `26214400`  | maximum attachment size              |
-| `JKB_SHUTDOWN_TIMEOUT`     | no         | `15s`       | graceful shutdown deadline           |
-
-## Backup and restore
-
-Back up both persistent volumes as one operational snapshot. Stop writes (or
-briefly stop `app`), then dump PostgreSQL and archive the attachment volume:
+PostgreSQL и volume с файлами образуют единый логический snapshot. На время
+копирования желательно остановить запись:
 
 ```sh
 docker compose stop app
@@ -62,21 +217,90 @@ docker compose run --rm --no-deps -v "$PWD":/backup app \
 docker compose start app
 ```
 
-Restore into an empty deployment before starting `app`: restore the database
-with `pg_restore --clean --if-exists` and unpack the attachment archive into the
-attachments volume. Test restore procedures regularly; an untested backup is
-merely an optimistic file collection.
+Восстанавливайте базу и файлы в пустое окружение до запуска `app`. Резервная
+копия, восстановление которой никогда не проверяли, — это, строго говоря,
+довольно оптимистичная гипотеза.
 
-## Local development
+## Локальная разработка
 
-Run PostgreSQL and migrations, then start Go and Vite separately. Vite proxies
-`/api` and `/mcp` to port 8080. A production build is embedded automatically by
-the Dockerfile; locally, run `npm run build` before `go build ./cmd/jkb` when an
-all-in-one binary is needed.
+Требования:
 
-## Resource reference
+- Go 1.26;
+- Node.js 24 и npm;
+- PostgreSQL 17 или Docker Compose.
 
-An idle Compose smoke run on 2026-10-31 (arm64 Docker VM, immediately after
-health, REST, attachment and MCP checks) reported about **72 MiB** for `app` and
-**28 MiB** for PostgreSQL. This is an orientation point, not an SLA: allocator,
-database cache, architecture and workload change the numbers.
+Установить frontend-зависимости:
+
+```sh
+npm ci
+```
+
+Для разработки интерфейса можно оставить backend в Compose и запустить Vite:
+
+```sh
+docker compose up -d db app
+npm run dev
+```
+
+Vite проксирует `/api` и `/mcp` на `http://localhost:8080`.
+
+Для локального запуска Go-приложения задайте `JKB_DATABASE_URL`, примените
+миграции и отключите secure cookie только для HTTP-разработки:
+
+```sh
+go run ./cmd/jkb-migrate up
+JKB_COOKIE_SECURE=false go run ./cmd/jkb
+```
+
+`JKB_DATABASE_URL` лучше передавать через локальное окружение или менеджер
+секретов, а не записывать в команды и shell history.
+
+Production frontend собирается и встраивается автоматически через Dockerfile.
+Для ручной сборки единого бинарника:
+
+```sh
+npm run build
+go build ./cmd/jkb
+```
+
+## Проверки
+
+Backend:
+
+```sh
+go test ./...
+```
+
+Frontend:
+
+```sh
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Integration-тесты с PostgreSQL запускаются при наличии
+`JKB_TEST_DATABASE_URL`. Тестовая база очищается, поэтому никогда не указывайте
+production database.
+
+## Структура репозитория
+
+```text
+cmd/                    исполняемые Go-команды
+  jkb/                  HTTP-сервер
+  jkb-admin/            административный CLI
+  jkb-migrate/          миграции
+internal/               backend-пакеты и встроенный frontend build
+migrations/             SQL-миграции Goose
+src/                    Vue-приложение
+CONTRACT.md             контракт продукта, REST и MCP
+compose.yaml            локальное и компактное production-развёртывание
+```
+
+## Ориентир по ресурсам
+
+В smoke-тесте на arm64 от 31 октября 2026 года сразу после запуска приложение
+использовало около 72 МиБ памяти, PostgreSQL — около 28 МиБ. Это ориентир, а не
+SLA: расход зависит от архитектуры, кэша PostgreSQL, allocator и реальной
+нагрузки.
