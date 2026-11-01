@@ -12,19 +12,21 @@ import (
 	internalAuth "github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
+	"github.com/ReanSn0w/justkb/internal/comments"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 	mcpAuth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type services struct {
-	board  *board.Service
-	cards  *cards.Service
-	tokens *tokens.Service
+	board    *board.Service
+	cards    *cards.Service
+	comments *comments.Service
+	tokens   *tokens.Service
 }
 
 func NewHandler(db *sql.DB) http.Handler {
-	services := &services{board: board.NewService(db), cards: cards.NewService(db), tokens: tokens.NewService(db)}
+	services := &services{board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "jkb", Version: "0.1.0"}, &mcp.ServerOptions{
 		Instructions:              "Manage the shared JKB kanban board. Read a card before mutating it and pass its current version as expected_version.",
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
@@ -174,6 +176,44 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.cards.Activity(ctx, input.CardID, input.Limit)
 		return domainResult(items, err)
 	})
+	type commentTarget struct {
+		CardID    string `json:"card_id,omitempty"`
+		ProjectID string `json:"project_id,omitempty"`
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "list_comments", Description: "List comments for one card or project.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input commentTarget) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		if (input.CardID == "") == (input.ProjectID == "") {
+			return errorResult("validation_failed", map[string]any{"fields": []string{"card_id", "project_id"}}), nil, nil
+		}
+		if input.ProjectID != "" {
+			items, err := s.comments.ListEpic(ctx, input.ProjectID)
+			return domainResult(items, err)
+		}
+		items, err := s.comments.ListCard(ctx, input.CardID)
+		return domainResult(items, err)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "add_comment", Description: "Add a Markdown comment to one card or project.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		CardID    string `json:"card_id,omitempty"`
+		ProjectID string `json:"project_id,omitempty"`
+		Body      string `json:"body"`
+	}) (*mcp.CallToolResult, any, error) {
+		principal, result := principalWithScope(ctx, "cards:write")
+		if result != nil {
+			return result, nil, nil
+		}
+		if (input.CardID == "") == (input.ProjectID == "") {
+			return errorResult("validation_failed", map[string]any{"fields": []string{"card_id", "project_id"}}), nil, nil
+		}
+		actor := comments.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}
+		if input.ProjectID != "" {
+			item, err := s.comments.CreateEpic(ctx, input.ProjectID, actor, input.Body)
+			return domainResult(item, err)
+		}
+		item, err := s.comments.CreateCard(ctx, input.CardID, actor, input.Body)
+		return domainResult(item, err)
+	})
 
 	type createInput struct {
 		Title       string     `json:"title"`
@@ -289,9 +329,9 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	code := "internal_error"
 	details := map[string]any{}
 	switch {
-	case errors.Is(err, cards.ErrNotFound), errors.Is(err, board.ErrNotFound):
+	case errors.Is(err, cards.ErrNotFound), errors.Is(err, board.ErrNotFound), errors.Is(err, comments.ErrNotFound):
 		code = "not_found"
-	case errors.Is(err, cards.ErrValidation), errors.Is(err, board.ErrValidation):
+	case errors.Is(err, cards.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, comments.ErrValidation):
 		code = "validation_failed"
 	case errors.Is(err, cards.ErrVersionConflict):
 		code = "card_version_conflict"

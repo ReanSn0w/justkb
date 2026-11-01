@@ -15,11 +15,26 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'board', component: () => import('./views/BoardView.vue') },
       { path: 'projects', name: 'projects', component: () => import('./views/EpicsView.vue') },
+      {
+        path: 'projects/:id/edit',
+        name: 'project-edit',
+        component: () => import('./views/EpicView.vue'),
+        meta: { admin: true },
+      },
       { path: 'projects/:id', name: 'project', component: () => import('./views/EpicView.vue') },
       { path: 'epics', redirect: '/projects' },
       {
+        path: 'epics/:id/edit',
+        redirect: (to) => `/projects/${String(to.params.id)}/edit`,
+      },
+      {
         path: 'epics/:id',
         redirect: (to) => `/projects/${String(to.params.id)}`,
+      },
+      {
+        path: 'cards/:id/edit',
+        name: 'card-edit',
+        component: () => import('./views/CardView.vue'),
       },
       { path: 'cards/:id', name: 'card', component: () => import('./views/CardView.vue') },
       {

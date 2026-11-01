@@ -8,6 +8,7 @@ import type {
   CardFilters,
   CardInput,
   CardPatch,
+  Comment,
   Epic,
   Group,
   IssuedToken,
@@ -92,6 +93,15 @@ export const cardsApi = {
     upload<Attachment>(`/cards/${id}/attachments`, file, progress),
   deleteAttachment: (id: UUID) => request<void>(`/attachments/${id}`, { method: 'DELETE' }),
   attachmentUrl: (id: UUID) => `/api/v1/attachments/${encodeURIComponent(id)}`,
+}
+export const commentsApi = {
+  list: (type: 'card' | 'project', id: UUID) =>
+    request<ListResult<Comment>>(`/${type === 'card' ? 'cards' : 'epics'}/${id}/comments`),
+  create: (type: 'card' | 'project', id: UUID, body: string) =>
+    request<Comment>(
+      `/${type === 'card' ? 'cards' : 'epics'}/${id}/comments`,
+      json('POST', { body }),
+    ),
 }
 export const tokensApi = {
   list: () => request<ListResult<ApiToken>>('/tokens'),

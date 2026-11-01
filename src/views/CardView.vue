@@ -9,6 +9,7 @@ import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
+import CommentPanel from '../components/comments/CommentPanel.vue'
 const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
@@ -19,6 +20,10 @@ const route = useRoute(),
   error = ref(''),
   preview = ref(false)
 const html = computed(() => renderMarkdown(card.value?.description || ''))
+const editing = computed(() => route.name === 'card-edit')
+const columnName = computed(
+  () => board.columns.find((column) => column.id === card.value?.column_id)?.name || '—',
+)
 onMounted(async () => {
   try {
     if (!board.columns.length) await board.initialize()
@@ -43,6 +48,7 @@ async function save() {
       due_at: card.value.due_at,
     })
     toasts.show('Карточка сохранена')
+    await router.push(`/cards/${card.value.id}`)
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
       error.value = 'Карточка уже изменена другим участником. Перезагрузите данные.'
@@ -58,6 +64,12 @@ async function toggleArchive() {
   card.value = card.value.is_archived
     ? await cardsApi.restore(card.value.id, card.value.version)
     : await cardsApi.archive(card.value.id, card.value.version)
+}
+async function cancelEdit() {
+  if (!card.value) return
+  card.value = await cardsApi.get(card.value.id)
+  error.value = ''
+  await router.push(`/cards/${card.value.id}`)
 }
 function toggleTag(id: string) {
   if (!card.value) return
@@ -77,17 +89,25 @@ function toggleTag(id: string) {
         <header class="level">
           <div class="level-left">
             <div>
-              <button class="button is-light mb-3" @click="router.push('/')">← Доска</button>
+              <button
+                class="button is-light mb-3"
+                @click="editing ? cancelEdit() : router.push('/')"
+              >
+                {{ editing ? '← Карточка' : '← Доска' }}
+              </button>
               <p class="has-text-grey is-size-7">JKB-{{ card.number }}</p>
             </div>
           </div>
           <div class="level-right">
-            <div class="buttons">
+            <div v-if="editing" class="buttons">
               <BaseButton tone="quiet" @click="toggleArchive">{{
                 card.is_archived ? 'Восстановить' : 'В архив'
               }}</BaseButton>
               <BaseButton @click="save">Сохранить</BaseButton>
             </div>
+            <BaseButton v-else @click="router.push(`/cards/${card.id}/edit`)">
+              Редактировать
+            </BaseButton>
           </div>
         </header>
         <div v-if="error" class="notification is-danger is-light" role="alert">
@@ -98,7 +118,7 @@ function toggleTag(id: string) {
         </div>
         <div class="columns is-variable is-5">
           <div class="column is-two-thirds">
-            <form class="box" @submit.prevent="save">
+            <form v-if="editing" class="box" @submit.prevent="save">
               <BaseField label="Заголовок">
                 <input v-model.trim="card.title" class="input" required />
               </BaseField>
@@ -171,6 +191,26 @@ function toggleTag(id: string) {
                 </label>
               </fieldset>
             </form>
+            <article v-else class="box">
+              <h1 class="title">{{ card.title }}</h1>
+              <div class="tags">
+                <span class="tag is-light">{{ columnName }}</span>
+                <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
+                <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
+                <span v-if="card.assignee" class="tag is-info is-light">
+                  {{ card.assignee.display_name }}
+                </span>
+                <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">
+                  {{ tag.name }}
+                </span>
+                <span v-if="card.due_at" class="tag is-warning is-light">
+                  Срок: {{ new Date(card.due_at).toLocaleString() }}
+                </span>
+              </div>
+              <div v-if="card.description" class="content mt-5" v-html="html"></div>
+              <StatusState v-else title="Описание пока не добавлено" />
+            </article>
+            <CommentPanel :entity-id="card.id" entity-type="card" />
           </div>
           <div class="column">
             <aside class="box">
@@ -178,6 +218,7 @@ function toggleTag(id: string) {
                 :entity-id="card.id"
                 entity-type="card"
                 :attachments="card.attachments || []"
+                :readonly="!editing"
                 @change="card.attachments = $event"
               />
               <hr />

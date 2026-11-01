@@ -48,6 +48,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Tag | `id`, `name`, `color` | — |
 | Card | `id`, `number`, `title`, `description`, `column_id`, `position`, `version`, `is_archived` | `epic_id`, `group_id`, `assignee_id`, `due_at` |
 | Attachment | `id`, `original_name`, `media_type`, `size`, `created_by` | `card_id` или `epic_id` |
+| Comment | `id`, `body`, `author_user_id`, `created_at`, `updated_at` | `card_id` или `epic_id`, `author_token_id` |
 | API token | `id`, `user_id`, `name`, `token_prefix`, `scopes` | `expires_at`, `last_used_at`, `revoked_at` |
 | Activity | `id`, `card_id`, `actor_user_id`, `action`, `changes` | `actor_token_id` |
 
@@ -62,6 +63,7 @@ JKB — одна общая kanban-доска для небольшой кома
 - карточка может иметь несколько тегов и вложений;
 - проект имеет подробное Markdown-описание и может содержать несколько вложений;
 - вложение принадлежит ровно одной карточке или одному проекту;
+- комментарий принадлежит ровно одной карточке или одному проекту и поддерживает Markdown;
 - архивный проект остаётся у существующих карточек, но не предлагается для новых;
 - удаление колонки с карточками запрещено до перемещения её карточек.
 
@@ -185,7 +187,16 @@ JKB — одна общая kanban-доска для небольшой кома
 
 В базе хранятся только метаданные. Имя файла на диске генерируется сервером и не зависит от пользовательского имени. Корневой каталог и максимальный размер задаются конфигурацией. Расширение и заголовок `Content-Type` не считаются достаточной проверкой типа.
 
-### 4.6. Персональные API-токены
+### 4.6. Комментарии
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `GET, POST` | `/cards/{id}/comments` | Прочитать или добавить комментарий к карточке |
+| `GET, POST` | `/epics/{id}/comments` | Прочитать или добавить комментарий к проекту |
+
+Комментарии поддерживают Markdown. В ответе возвращаются автор и, если комментарий создан агентом, `author_token_id`.
+
+### 4.7. Персональные API-токены
 
 | Метод | Путь | Назначение |
 |---|---|---|
@@ -229,8 +240,11 @@ JKB — одна общая kanban-доска для небольшой кома
 | `list_cards` | Фильтры REST API, `limit?`, `cursor?` | Краткие DTO карточек и `next_cursor` |
 | `get_card` | `card_id` или `card_number` | Полная карточка с тегами и метаданными вложений |
 | `get_card_activity` | `card_id`, `limit?`, `cursor?` | Журнал карточки |
+| `list_comments` | Ровно одно из `card_id`, `project_id` | Комментарии карточки или проекта |
 
 Все инструменты чтения требуют `cards:read` и помечаются MCP annotation `readOnlyHint: true`.
+
+`add_comment` принимает ровно одно из `card_id`, `project_id`, а также `body`, и требует `cards:write`.
 
 `create_epic` и `update_epic` требуют `cards:write` и роль `admin` владельца токена.
 

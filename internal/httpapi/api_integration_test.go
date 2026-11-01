@@ -132,6 +132,18 @@ func TestRESTContractIntegration(t *testing.T) {
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), "brief.txt") {
 		t.Fatalf("epic detail status=%d body=%s", detail.Code, detail.Body.String())
 	}
+	cardComment := request(handler, http.MethodPost, "/api/v1/cards/"+card.ID+"/comments", `{"body":"Card note"}`, cookies[0], loginPayload.CSRF)
+	if cardComment.Code != http.StatusCreated {
+		t.Fatalf("card comment status=%d body=%s", cardComment.Code, cardComment.Body.String())
+	}
+	projectComment := request(handler, http.MethodPost, "/api/v1/epics/"+epic.ID+"/comments", `{"body":"Project note"}`, cookies[0], loginPayload.CSRF)
+	if projectComment.Code != http.StatusCreated {
+		t.Fatalf("project comment status=%d body=%s", projectComment.Code, projectComment.Body.String())
+	}
+	comments := request(handler, http.MethodGet, "/api/v1/cards/"+card.ID+"/comments", "", cookies[0], "")
+	if comments.Code != http.StatusOK || !strings.Contains(comments.Body.String(), "Card note") {
+		t.Fatalf("comments status=%d body=%s", comments.Code, comments.Body.String())
+	}
 }
 
 func request(handler http.Handler, method, path, body string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {

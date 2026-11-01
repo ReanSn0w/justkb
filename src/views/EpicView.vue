@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cardsApi, epicsApi, type Card, type Epic } from '../api'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
+import CommentPanel from '../components/comments/CommentPanel.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
@@ -20,6 +21,7 @@ const loading = ref(true)
 const error = ref('')
 const preview = ref(false)
 const isAdmin = computed(() => session.user?.role === 'admin')
+const editing = computed(() => route.name === 'project-edit')
 const html = computed(() => renderMarkdown(epic.value?.description || ''))
 
 onMounted(async () => {
@@ -54,6 +56,7 @@ async function save() {
       attachments: current.attachments,
     }
     toasts.show('Проект сохранён')
+    await router.push(`/projects/${current.id}`)
   } catch {
     error.value = 'Не удалось сохранить проект'
   }
@@ -63,6 +66,12 @@ async function toggleArchive() {
   if (!epic.value || !isAdmin.value) return
   epic.value.is_archived = !epic.value.is_archived
   await save()
+}
+async function cancelEdit() {
+  if (!epic.value) return
+  epic.value = await epicsApi.get(epic.value.id)
+  error.value = ''
+  await router.push(`/projects/${epic.value.id}`)
 }
 </script>
 
@@ -74,22 +83,30 @@ async function toggleArchive() {
       <template v-else>
         <header class="level">
           <div class="level-left">
-            <button class="button is-light" @click="router.push('/projects')">← Проекты</button>
+            <button
+              class="button is-light"
+              @click="editing ? cancelEdit() : router.push('/projects')"
+            >
+              {{ editing ? '← Проект' : '← Проекты' }}
+            </button>
           </div>
-          <div v-if="isAdmin" class="level-right">
-            <div class="buttons">
+          <div class="level-right">
+            <div v-if="editing" class="buttons">
               <BaseButton tone="quiet" @click="toggleArchive">
                 {{ epic.is_archived ? 'Восстановить' : 'В архив' }}
               </BaseButton>
               <BaseButton @click="save">Сохранить</BaseButton>
             </div>
+            <BaseButton v-else-if="isAdmin" @click="router.push(`/projects/${epic.id}/edit`)">
+              Редактировать
+            </BaseButton>
           </div>
         </header>
         <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
 
         <div class="columns is-variable is-5">
           <div class="column is-two-thirds">
-            <form v-if="isAdmin" class="box" @submit.prevent="save">
+            <form v-if="editing" class="box" @submit.prevent="save">
               <BaseField label="Название">
                 <input v-model.trim="epic.name" class="input" required />
               </BaseField>
@@ -130,6 +147,7 @@ async function toggleArchive() {
               </article>
               <StatusState v-if="!cards.length" title="В этом проекте пока нет задач" />
             </section>
+            <CommentPanel :entity-id="epic.id" entity-type="project" />
           </div>
 
           <div class="column">
@@ -138,6 +156,7 @@ async function toggleArchive() {
                 :entity-id="epic.id"
                 entity-type="epic"
                 :attachments="epic.attachments || []"
+                :readonly="!editing"
                 @change="epic.attachments = $event"
               />
             </aside>

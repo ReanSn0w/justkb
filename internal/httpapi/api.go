@@ -15,6 +15,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
+	"github.com/ReanSn0w/justkb/internal/comments"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 )
@@ -25,6 +26,7 @@ type api struct {
 	auth          *auth.Service
 	board         *board.Service
 	cards         *cards.Service
+	comments      *comments.Service
 	attachments   *attachments.Service
 	attachmentMax int64
 	cookieSecure  bool
@@ -39,6 +41,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	}
 	server := &api{
 		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
+		comments:    comments.NewService(deps.DB),
 		attachments: attachmentService, attachmentMax: deps.AttachmentMaxSize, cookieSecure: deps.CookieSecure,
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
 		tokens:       tokens.NewService(deps.DB),
@@ -71,6 +74,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.Handle("GET /api/v1/epics/{id}", server.member(http.HandlerFunc(server.getEpic)))
 	mux.Handle("PATCH /api/v1/epics/{id}", server.admin(http.HandlerFunc(server.updateEpic)))
 	mux.Handle("POST /api/v1/epics/{id}/attachments", server.member(http.HandlerFunc(server.uploadEpicAttachment)))
+	mux.Handle("GET /api/v1/epics/{id}/comments", server.member(http.HandlerFunc(server.listEpicComments)))
+	mux.Handle("POST /api/v1/epics/{id}/comments", server.member(http.HandlerFunc(server.createEpicComment)))
 
 	mux.Handle("GET /api/v1/tags", server.member(http.HandlerFunc(server.listTags)))
 	mux.Handle("POST /api/v1/tags", server.admin(http.HandlerFunc(server.createTag)))
@@ -86,6 +91,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.Handle("POST /api/v1/cards/{id}/restore", server.member(http.HandlerFunc(server.restoreCard)))
 	mux.Handle("GET /api/v1/cards/{id}/activity", server.member(http.HandlerFunc(server.cardActivity)))
 	mux.Handle("POST /api/v1/cards/{id}/attachments", server.member(http.HandlerFunc(server.uploadAttachment)))
+	mux.Handle("GET /api/v1/cards/{id}/comments", server.member(http.HandlerFunc(server.listCardComments)))
+	mux.Handle("POST /api/v1/cards/{id}/comments", server.member(http.HandlerFunc(server.createCardComment)))
 	mux.Handle("GET /api/v1/attachments/{id}", server.member(http.HandlerFunc(server.downloadAttachment)))
 	mux.Handle("DELETE /api/v1/attachments/{id}", server.member(http.HandlerFunc(server.deleteAttachment)))
 	mux.Handle("GET /api/v1/tokens", server.member(http.HandlerFunc(server.listTokens)))
@@ -536,6 +543,39 @@ func (a *api) cardActivity(w http.ResponseWriter, r *http.Request) {
 	writeList(w, r, items, err)
 }
 
+func (a *api) listCardComments(w http.ResponseWriter, r *http.Request) {
+	items, err := a.comments.ListCard(r.Context(), r.PathValue("id"))
+	writeList(w, r, items, err)
+}
+func (a *api) listEpicComments(w http.ResponseWriter, r *http.Request) {
+	items, err := a.comments.ListEpic(r.Context(), r.PathValue("id"))
+	writeList(w, r, items, err)
+}
+func (a *api) createCardComment(w http.ResponseWriter, r *http.Request) {
+	a.createComment(w, r, r.PathValue("id"), "")
+}
+func (a *api) createEpicComment(w http.ResponseWriter, r *http.Request) {
+	a.createComment(w, r, "", r.PathValue("id"))
+}
+func (a *api) createComment(w http.ResponseWriter, r *http.Request, cardID, epicID string) {
+	var input struct {
+		Body string `json:"body"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	principal, _ := PrincipalFromContext(r.Context())
+	actor := comments.Actor{UserID: principal.User.ID}
+	var item comments.Comment
+	var err error
+	if epicID != "" {
+		item, err = a.comments.CreateEpic(r.Context(), epicID, actor, input.Body)
+	} else {
+		item, err = a.comments.CreateCard(r.Context(), cardID, actor, input.Body)
+	}
+	writeCreated(w, r, item, err)
+}
+
 func (a *api) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	a.uploadFor(w, r, r.PathValue("id"), "")
 }
@@ -632,9 +672,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
-	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
+	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
 		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
-	case errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
+	case errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, comments.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Validation failed"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"

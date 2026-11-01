@@ -62,6 +62,17 @@ export interface Activity {
   actor?: Pick<User, 'id' | 'display_name'>
   token_name?: string | null
 }
+export interface Comment {
+  id: UUID
+  card_id?: UUID
+  epic_id?: UUID
+  author_user_id: UUID
+  author_token_id?: UUID | null
+  body: string
+  created_at: string
+  updated_at: string
+  author: Pick<User, 'id' | 'display_name'>
+}
 export interface Card extends Timestamps {
   id: UUID
   number: number

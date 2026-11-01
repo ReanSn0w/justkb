@@ -7,6 +7,7 @@ const props = defineProps<{
   entityId: string
   entityType: 'card' | 'epic'
   attachments: Attachment[]
+  readonly?: boolean
 }>()
 const emit = defineEmits<{ change: [items: Attachment[]] }>()
 const progress = ref(0),
@@ -62,7 +63,7 @@ function size(value: number) {
 <template>
   <section>
     <h2 class="title is-5">Вложения</h2>
-    <div class="file has-name is-fullwidth">
+    <div v-if="!readonly" class="file has-name is-fullwidth">
       <label class="file-label">
         <input
           class="file-input"
@@ -97,7 +98,7 @@ function size(value: number) {
             </p>
           </div>
         </div>
-        <div class="media-right">
+        <div v-if="!readonly" class="media-right">
           <BaseButton tone="quiet" @click="remove(item)">Удалить</BaseButton>
         </div>
       </article>
