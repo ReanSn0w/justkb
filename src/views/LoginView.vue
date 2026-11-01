@@ -37,7 +37,7 @@ async function submit() {
           <div class="column is-one-third-desktop is-half-tablet">
             <div class="has-text-centered mb-5">
               <h1 class="title">{{ systemName }}</h1>
-              <p class="subtitle">Канбан-доска проекта</p>
+              <p class="subtitle">Канбан доска</p>
             </div>
             <form class="box" @submit.prevent="submit">
               <h2 class="title is-4">Вход</h2>

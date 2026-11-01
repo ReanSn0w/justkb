@@ -16,7 +16,7 @@ describe('automated accessibility', () => {
       rules: { 'color-contrast': { enabled: false } },
     })
     expect(wrapper.get('h1').text()).toBe('JKB')
-    expect(wrapper.get('.subtitle').text()).toBe('Канбан-доска проекта')
+    expect(wrapper.get('.subtitle').text()).toBe('Канбан доска')
     expect(wrapper.get('form h2').text()).toBe('Вход')
     expect(wrapper.get('.hero').classes()).not.toContain('is-light')
     expect(
