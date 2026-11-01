@@ -14,6 +14,7 @@ function toggleTag(id: string) {
 </script>
 <template>
   <aside class="box" aria-label="Фильтры доски">
+    <h2 class="title is-5">Фильтры</h2>
     <div class="field is-grouped is-grouped-multiline">
       <div class="control is-expanded">
         <input
@@ -27,6 +28,7 @@ function toggleTag(id: string) {
       <div class="control">
         <div class="select">
           <select v-model="board.filters.epic_id" aria-label="EPIC">
+            <option :value="undefined" disabled>Выберите EPIC</option>
             <option value="">Все EPIC</option>
             <option value="none">Без EPIC</option>
             <option v-for="epic in board.epics" :key="epic.id" :value="epic.id">
@@ -38,6 +40,7 @@ function toggleTag(id: string) {
       <div class="control">
         <div class="select">
           <select v-model="board.filters.group_id" aria-label="Группа">
+            <option :value="undefined" disabled>Выберите группу</option>
             <option value="">Все группы</option>
             <option value="none">Без группы</option>
             <option v-for="group in board.groups" :key="group.id" :value="group.id">
@@ -49,6 +52,7 @@ function toggleTag(id: string) {
       <div class="control">
         <div class="select">
           <select v-model="board.filters.assignee_id" aria-label="Исполнитель">
+            <option :value="undefined" disabled>Выберите исполнителя</option>
             <option value="">Все исполнители</option>
             <option value="me">Мои задачи</option>
             <option value="none">Без исполнителя</option>
