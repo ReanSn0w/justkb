@@ -63,7 +63,7 @@ function toggleTag(id: string) {
         </div>
       </div>
       <div v-if="active" class="control">
-        <button class="button is-light" @click="board.filters = {}">Сбросить</button>
+        <button class="button" @click="board.filters = {}">Сбросить</button>
       </div>
     </div>
     <div v-if="board.tags.length" class="tags">
@@ -74,7 +74,7 @@ function toggleTag(id: string) {
         :class="[
           'tag',
           'is-medium',
-          board.filters.tag_ids?.includes(tag.id) ? 'is-info' : 'is-light',
+          board.filters.tag_ids?.includes(tag.id) ? 'is-info' : undefined,
         ]"
         @click="toggleTag(tag.id)"
       >

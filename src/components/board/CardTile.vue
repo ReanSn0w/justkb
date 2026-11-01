@@ -18,9 +18,9 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
         <p class="has-text-weight-semibold">{{ card.title }}</p>
       </RouterLink>
       <div class="tags mt-4 mb-2">
-        <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
-        <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
-        <span v-if="card.assignee" class="tag is-info is-light">
+        <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
+        <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
+        <span v-if="card.assignee" class="tag is-info">
           <UserAvatar :user="card.assignee" :size="24" />
           <span class="ml-1">{{ card.assignee.display_name }}</span>
         </span>
@@ -30,14 +30,14 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
       </div>
       <div class="buttons are-small is-right mb-0">
         <button
-          class="button is-light"
+          class="button"
           aria-label="Переместить в предыдущую колонку"
           @click="$emit('move', -1)"
         >
           ←
         </button>
         <button
-          class="button is-light"
+          class="button"
           aria-label="Переместить в следующую колонку"
           @click="$emit('move', 1)"
         >

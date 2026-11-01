@@ -15,6 +15,7 @@ describe('automated accessibility', () => {
     const result = await axe.run(wrapper.element, {
       rules: { 'color-contrast': { enabled: false } },
     })
+    expect(wrapper.get('.hero').classes()).not.toContain('is-light')
     expect(
       result.violations.filter((v) => ['serious', 'critical'].includes(v.impact || '')),
     ).toEqual([])

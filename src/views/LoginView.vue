@@ -30,7 +30,7 @@ async function submit() {
 }
 </script>
 <template>
-  <main class="hero is-fullheight is-light">
+  <main class="hero is-fullheight">
     <div class="hero-body">
       <div class="container">
         <div class="columns is-centered">
@@ -53,7 +53,7 @@ async function submit() {
                   autocomplete="current-password"
                   required
               /></BaseField>
-              <div v-if="error" class="notification is-danger is-light" role="alert">
+              <div v-if="error" class="notification is-danger" role="alert">
                 {{ error }}
               </div>
               <BaseButton type="submit" :disabled="busy">{{

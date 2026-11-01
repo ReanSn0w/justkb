@@ -105,10 +105,7 @@ async function cancelEdit() {
       <template v-else>
         <header class="level">
           <div class="level-left">
-            <button
-              class="button is-light"
-              @click="editing ? cancelEdit() : router.push('/projects')"
-            >
+            <button class="button" @click="editing ? cancelEdit() : router.push('/projects')">
               {{ editing ? '← Проект' : '← Проекты' }}
             </button>
           </div>
@@ -124,7 +121,7 @@ async function cancelEdit() {
             </BaseButton>
           </div>
         </header>
-        <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
+        <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
 
         <div class="columns is-variable is-5">
           <div class="column is-two-thirds">
@@ -150,7 +147,7 @@ async function cancelEdit() {
               <div class="level is-mobile">
                 <div class="level-left"><h2 class="title is-5 mb-0">Задачи</h2></div>
                 <div class="level-right">
-                  <span class="tag is-light">{{ epic.card_count }}</span>
+                  <span class="tag">{{ epic.card_count }}</span>
                 </div>
               </div>
               <RouterLink
@@ -171,9 +168,7 @@ async function cancelEdit() {
                 >
                   <span class="level is-mobile mb-1">
                     <span class="level-left">{{ column.name }}</span>
-                    <span class="level-right tag is-light">{{
-                      countByColumn[column.id] || 0
-                    }}</span>
+                    <span class="level-right tag">{{ countByColumn[column.id] || 0 }}</span>
                   </span>
                   <progress
                     class="progress is-primary is-small"

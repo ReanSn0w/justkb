@@ -121,7 +121,7 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
 <template>
   <section class="section">
     <div class="container">
-      <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
+      <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
       <nav class="tabs is-boxed" aria-label="Разделы настроек">
         <ul>
           <li v-for="(_, key) in labels" :key="key" :class="{ 'is-active': tab === key }">
@@ -167,19 +167,16 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
             <div class="media-right">
               <div class="buttons are-small">
                 <button
-                  class="button is-light"
+                  class="button"
                   @click="patchUser(user, { role: user.role === 'admin' ? 'member' : 'admin' })"
                 >
                   Сменить роль
                 </button>
-                <button
-                  class="button is-light"
-                  @click="patchUser(user, { is_active: !user.is_active })"
-                >
+                <button class="button" @click="patchUser(user, { is_active: !user.is_active })">
                   {{ user.is_active ? 'Отключить' : 'Включить' }}
                 </button>
-                <button class="button is-light" @click="membership(user)">Группы</button>
-                <button class="button is-light" @click="password(user)">Пароль</button>
+                <button class="button" @click="membership(user)">Группы</button>
+                <button class="button" @click="password(user)">Пароль</button>
               </div>
             </div>
           </article>
@@ -187,12 +184,10 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
         <template v-else-if="tab === 'groups'">
           <article v-for="item in groups" :key="item.id" class="media">
             <div class="media-content">
-              <span class="tag is-primary is-light">{{ item.name }}</span>
+              <span class="tag is-primary">{{ item.name }}</span>
             </div>
             <div class="media-right">
-              <button class="button is-light is-small" @click="rename('groups', item)">
-                Переименовать
-              </button>
+              <button class="button is-small" @click="rename('groups', item)">Переименовать</button>
             </div>
           </article>
         </template>
@@ -203,13 +198,11 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
             </div>
             <div class="media-right">
               <div class="buttons are-small">
-                <button class="button is-light" @click="moveColumn(index, -1)">↑</button>
-                <button class="button is-light" @click="moveColumn(index, 1)">↓</button>
-                <button class="button is-light" @click="rename('columns', item)">
-                  Переименовать
-                </button>
+                <button class="button" @click="moveColumn(index, -1)">↑</button>
+                <button class="button" @click="moveColumn(index, 1)">↓</button>
+                <button class="button" @click="rename('columns', item)">Переименовать</button>
                 <button
-                  class="button is-danger is-light"
+                  class="button is-danger"
                   @click="directoryApi.deleteColumn(item.id).then(load)"
                 >
                   Удалить
@@ -224,9 +217,7 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
               <span class="tag is-info">{{ item.name }}</span>
             </div>
             <div class="media-right">
-              <button class="button is-light is-small" @click="rename('tags', item)">
-                Переименовать
-              </button>
+              <button class="button is-small" @click="rename('tags', item)">Переименовать</button>
             </div>
           </article>
         </template>

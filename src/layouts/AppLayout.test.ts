@@ -32,6 +32,7 @@ describe('application navigation', () => {
       },
     })
 
+    expect(wrapper.get('.navbar').classes()).not.toContain('is-light')
     expect(wrapper.get('.navbar-start').text()).toContain('Доска')
     expect(wrapper.get('.navbar-start').text()).toContain('Проекты')
     expect(wrapper.get('.navbar-start').text()).not.toContain('Настройки')
@@ -42,6 +43,7 @@ describe('application navigation', () => {
     expect(dropdown.text()).toContain('Настройки профиля')
     expect(dropdown.text()).toContain('Настройки системы')
     expect(dropdown.text()).toContain('Выйти')
+    expect(dropdown.get('button').classes()).not.toContain('is-white')
     await dropdown.trigger('keydown.esc')
     expect(dropdown.classes()).not.toContain('is-active')
   })

@@ -7,11 +7,7 @@ const props = defineProps<{
   tone?: 'empty' | 'error' | 'loading'
 }>()
 const toneClass = computed(() =>
-  props.tone === 'error'
-    ? 'is-danger is-light'
-    : props.tone === 'loading'
-      ? 'is-info is-light'
-      : 'is-light',
+  props.tone === 'error' ? 'is-danger' : props.tone === 'loading' ? 'is-info' : undefined,
 )
 </script>
 <template>

@@ -27,7 +27,7 @@ async function logout() {
 </script>
 <template>
   <a class="is-sr-only" href="#main-content">К основному содержимому</a>
-  <nav class="navbar is-light" aria-label="Основная навигация">
+  <nav class="navbar" aria-label="Основная навигация">
     <div class="navbar-brand">
       <RouterLink class="navbar-item title is-4 mb-0 has-text-primary" to="/" @click="closeMenus">
         {{ systemName }}
@@ -86,7 +86,7 @@ async function logout() {
             </RouterLink>
             <hr class="navbar-divider" />
             <div class="navbar-item">
-              <button class="button is-white is-fullwidth" @click="logout">Выйти</button>
+              <button class="button is-fullwidth" @click="logout">Выйти</button>
             </div>
           </div>
         </div>

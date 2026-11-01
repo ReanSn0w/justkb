@@ -10,7 +10,7 @@ const props = withDefaults(
   { type: 'button', tone: 'primary' },
 )
 const toneClass = computed(
-  () => ({ primary: 'is-primary', quiet: 'is-light', danger: 'is-danger' })[props.tone],
+  () => ({ primary: 'is-primary', quiet: undefined, danger: 'is-danger' })[props.tone],
 )
 </script>
 <template>

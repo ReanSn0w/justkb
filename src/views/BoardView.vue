@@ -95,7 +95,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
                   <h2 class="title is-5 mb-0">{{ column.name }}</h2>
                 </div>
                 <div class="level-right">
-                  <span class="tag is-light"
+                  <span class="tag"
                     >{{ board.byColumn[column.id]?.length || 0
                     }}<template v-if="column.wip_limit"> / {{ column.wip_limit }}</template></span
                   >

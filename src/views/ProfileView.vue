@@ -171,7 +171,7 @@ async function savePassword() {
             <BaseField label="Отображаемое имя">
               <input v-model="displayName" class="input" maxlength="200" required />
             </BaseField>
-            <div v-if="profileError" class="notification is-danger is-light" role="alert">
+            <div v-if="profileError" class="notification is-danger" role="alert">
               {{ profileError }}
             </div>
             <BaseButton type="submit" :disabled="profileBusy">Сохранить профиль</BaseButton>
@@ -211,7 +211,7 @@ async function savePassword() {
                 required
               />
             </BaseField>
-            <div v-if="passwordError" class="notification is-danger is-light" role="alert">
+            <div v-if="passwordError" class="notification is-danger" role="alert">
               {{ passwordError }}
             </div>
             <BaseButton type="submit">Изменить пароль</BaseButton>

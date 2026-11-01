@@ -67,7 +67,7 @@ onMounted(load)
         </div>
       </div>
     </form>
-    <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
+    <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
     <StatusState v-if="loading" title="Загружаем комментарии…" tone="loading" />
     <StatusState v-else-if="!items.length" title="Комментариев пока нет" />
     <template v-else>

@@ -78,9 +78,9 @@ function size(value: number) {
     <progress v-if="busy" class="progress is-primary mt-4" :value="progress" max="100">
       {{ progress }}%
     </progress>
-    <div v-if="error" class="notification is-danger is-light mt-4" role="alert">
+    <div v-if="error" class="notification is-danger mt-4" role="alert">
       {{ error }}
-      <button v-if="lastFile" class="button is-danger is-light is-small" @click="upload(lastFile)">
+      <button v-if="lastFile" class="button is-danger is-small" @click="upload(lastFile)">
         Повторить
       </button>
     </div>

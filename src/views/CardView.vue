@@ -89,10 +89,7 @@ function toggleTag(id: string) {
         <header class="level">
           <div class="level-left">
             <div>
-              <button
-                class="button is-light mb-3"
-                @click="editing ? cancelEdit() : router.push('/')"
-              >
+              <button class="button mb-3" @click="editing ? cancelEdit() : router.push('/')">
                 {{ editing ? '← Карточка' : '← Доска' }}
               </button>
               <p class="has-text-grey is-size-7">JKB-{{ card.number }}</p>
@@ -110,11 +107,9 @@ function toggleTag(id: string) {
             </BaseButton>
           </div>
         </header>
-        <div v-if="error" class="notification is-danger is-light" role="alert">
+        <div v-if="error" class="notification is-danger" role="alert">
           {{ error }}
-          <button class="button is-danger is-light is-small" @click="router.go(0)">
-            Перезагрузить
-          </button>
+          <button class="button is-danger is-small" @click="router.go(0)">Перезагрузить</button>
         </div>
         <div class="columns is-variable is-5">
           <div class="column is-two-thirds">
@@ -183,17 +178,17 @@ function toggleTag(id: string) {
             <article v-else class="box">
               <h1 class="title">{{ card.title }}</h1>
               <div class="tags">
-                <span class="tag is-light">{{ columnName }}</span>
-                <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
-                <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
-                <span v-if="card.assignee" class="tag is-info is-light">
+                <span class="tag">{{ columnName }}</span>
+                <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
+                <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
+                <span v-if="card.assignee" class="tag is-info">
                   <UserAvatar :user="card.assignee" :size="24" />
                   <span class="ml-1">{{ card.assignee.display_name }}</span>
                 </span>
                 <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">
                   {{ tag.name }}
                 </span>
-                <span v-if="card.due_at" class="tag is-warning is-light">
+                <span v-if="card.due_at" class="tag is-warning">
                   Срок: {{ new Date(card.due_at).toLocaleString() }}
                 </span>
               </div>

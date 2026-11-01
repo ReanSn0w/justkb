@@ -68,8 +68,8 @@ async function restoreBackup() {
 </script>
 
 <template>
-  <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
-  <div v-if="restored" class="notification is-success is-light" role="status">
+  <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
+  <div v-if="restored" class="notification is-success" role="status">
     Система восстановлена. Текущая сессия могла измениться —
     <a href="/">перезагрузите приложение</a>.
   </div>
@@ -91,7 +91,7 @@ async function restoreBackup() {
     <div class="column">
       <section class="box">
         <h2 class="title is-4">Восстановить систему</h2>
-        <div class="notification is-danger is-light">
+        <div class="notification is-danger">
           Восстановление заменит всех пользователей, задачи, настройки и локальные файлы. Архив
           должен быть создан той же версией схемы системы.
         </div>

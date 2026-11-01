@@ -51,7 +51,7 @@ onMounted(load)
 <template>
   <section class="section">
     <div class="container">
-      <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
+      <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
       <form v-if="session.user?.role === 'admin'" class="box" @submit.prevent="create">
         <h2 class="title is-5">Новый проект</h2>
         <div class="columns is-align-items-flex-end">
@@ -88,13 +88,13 @@ onMounted(load)
                   <h2 class="title is-5 mb-0">{{ epic.name }}</h2>
                 </div>
                 <div class="level-right">
-                  <span class="tag is-link is-light">{{ epic.card_count }} задач</span>
+                  <span class="tag is-link">{{ epic.card_count }} задач</span>
                 </div>
               </div>
               <p class="has-text-grey">
                 {{ epic.description || 'Описание пока не добавлено.' }}
               </p>
-              <span v-if="epic.is_archived" class="tag is-light mt-4">В архиве</span>
+              <span v-if="epic.is_archived" class="tag mt-4">В архиве</span>
             </div>
           </RouterLink>
         </div>
