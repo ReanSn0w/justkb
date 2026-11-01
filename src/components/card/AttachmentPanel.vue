@@ -51,30 +51,48 @@ function size(value: number) {
 }
 </script>
 <template>
-  <section class="attachments">
-    <h2>Вложения</h2>
-    <label class="file-picker"
-      ><span>Выбрать файл</span
-      ><input
-        type="file"
-        :disabled="busy"
-        @change="upload(($event.target as HTMLInputElement).files?.[0])" /></label
-    ><progress v-if="busy" :value="progress" max="100">{{ progress }}%</progress>
-    <p v-if="error" class="field__error" role="alert">
-      {{ error }} <button v-if="lastFile" @click="upload(lastFile)">Повторить</button>
-    </p>
-    <ul>
-      <li v-for="item in attachments" :key="item.id">
-        <div>
-          <a :href="cardsApi.attachmentUrl(item.id)">{{ item.original_name }}</a
-          ><small
-            >{{ item.media_type }} · {{ size(item.size) }} ·
-            {{ item.author?.display_name || 'пользователь' }}</small
-          >
+  <section>
+    <h2 class="title is-5">Вложения</h2>
+    <div class="file has-name is-fullwidth">
+      <label class="file-label">
+        <input
+          class="file-input"
+          type="file"
+          :disabled="busy"
+          @change="upload(($event.target as HTMLInputElement).files?.[0])"
+        />
+        <span class="file-cta"><span class="file-label">Выбрать файл</span></span>
+        <span class="file-name">{{ lastFile?.name || 'Файл не выбран' }}</span>
+      </label>
+    </div>
+    <progress v-if="busy" class="progress is-primary mt-4" :value="progress" max="100">
+      {{ progress }}%
+    </progress>
+    <div v-if="error" class="notification is-danger is-light mt-4" role="alert">
+      {{ error }}
+      <button v-if="lastFile" class="button is-danger is-light is-small" @click="upload(lastFile)">
+        Повторить
+      </button>
+    </div>
+    <div class="mt-5">
+      <article v-for="item in attachments" :key="item.id" class="media">
+        <div class="media-content">
+          <div class="content">
+            <p>
+              <a :href="cardsApi.attachmentUrl(item.id)">{{ item.original_name }}</a>
+              <br />
+              <small
+                >{{ item.media_type }} · {{ size(item.size) }} ·
+                {{ item.author?.display_name || 'пользователь' }}</small
+              >
+            </p>
+          </div>
         </div>
-        <BaseButton tone="quiet" @click="remove(item)">Удалить</BaseButton>
-      </li>
-    </ul>
-    <p v-if="!attachments.length" class="muted">Файлов пока нет.</p>
+        <div class="media-right">
+          <BaseButton tone="quiet" @click="remove(item)">Удалить</BaseButton>
+        </div>
+      </article>
+    </div>
+    <p v-if="!attachments.length" class="has-text-grey mt-4">Файлов пока нет.</p>
   </section>
 </template>

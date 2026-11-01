@@ -49,65 +49,89 @@ function status(item: ApiToken) {
 }
 </script>
 <template>
-  <section class="page tokens-page">
-    <header>
-      <div>
-        <h1>API-токены</h1>
-        <p class="muted">Персональный доступ для агентов и автоматизации.</p>
-      </div>
-    </header>
-    <div class="token-grid">
-      <form class="panel" @submit.prevent="create">
-        <h2>Новый токен</h2>
-        <BaseField label="Название"
-          ><input v-model.trim="name" required placeholder="Codex"
-        /></BaseField>
-        <fieldset>
-          <legend>Права</legend>
-          <label class="check"><input v-model="read" type="checkbox" />Чтение карточек</label
-          ><label class="check"><input v-model="write" type="checkbox" />Изменение карточек</label>
-        </fieldset>
-        <BaseField label="Срок действия" hint="Необязательно"
-          ><input v-model="expires" type="datetime-local" /></BaseField
-        ><BaseButton type="submit" :disabled="!read && !write">Выпустить токен</BaseButton>
-      </form>
-      <aside class="panel mcp-help">
-        <h2>Remote MCP</h2>
-        <p>Endpoint:</p>
-        <code>{{ mcpUrl }}</code>
-        <p>Передайте токен заголовком:</p>
-        <code>Authorization: Bearer jkb_pat_…</code>
-        <p class="muted">Не добавляйте токен в URL или репозиторий.</p>
-      </aside>
-    </div>
-    <div class="panel token-list">
-      <h2>Выданные токены</h2>
-      <article v-for="item in items" :key="item.id">
-        <div>
-          <strong>{{ item.name }}</strong
-          ><code>{{ item.token_prefix }}…</code
-          ><small
-            >{{ item.scopes.join(', ') }} · {{ status(item)
-            }}<template v-if="item.last_used_at">
-              · использован {{ new Date(item.last_used_at).toLocaleString() }}</template
-            ><template v-if="item.expires_at">
-              · до {{ new Date(item.expires_at).toLocaleString() }}</template
-            ></small
-          >
+  <section class="section">
+    <div class="container">
+      <header class="mb-5">
+        <h1 class="title">API-токены</h1>
+        <p class="subtitle is-6">Персональный доступ для агентов и автоматизации.</p>
+      </header>
+      <div class="columns is-variable is-5">
+        <div class="column">
+          <form class="box" @submit.prevent="create">
+            <h2 class="title is-4">Новый токен</h2>
+            <BaseField label="Название">
+              <input v-model.trim="name" class="input" required placeholder="Codex" />
+            </BaseField>
+            <fieldset class="field">
+              <legend class="label">Права</legend>
+              <label class="checkbox mr-4">
+                <input v-model="read" type="checkbox" /> Чтение карточек
+              </label>
+              <label class="checkbox">
+                <input v-model="write" type="checkbox" /> Изменение карточек
+              </label>
+            </fieldset>
+            <BaseField label="Срок действия" hint="Необязательно">
+              <input v-model="expires" class="input" type="datetime-local" />
+            </BaseField>
+            <BaseButton type="submit" :disabled="!read && !write">Выпустить токен</BaseButton>
+          </form>
         </div>
-        <BaseButton v-if="!item.revoked_at" tone="danger" @click="revoke(item)"
-          >Отозвать</BaseButton
-        >
-      </article>
-      <p v-if="!items.length" class="muted">Токенов пока нет.</p>
+        <div class="column">
+          <aside class="box">
+            <h2 class="title is-4">Remote MCP</h2>
+            <div class="content">
+              <p>Endpoint:</p>
+              <pre><code>{{ mcpUrl }}</code></pre>
+              <p>Передайте токен заголовком:</p>
+              <pre><code>Authorization: Bearer jkb_pat_…</code></pre>
+              <p class="has-text-grey">Не добавляйте токен в URL или репозиторий.</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+      <div class="box">
+        <h2 class="title is-4">Выданные токены</h2>
+        <article v-for="item in items" :key="item.id" class="media">
+          <div class="media-content">
+            <div class="content">
+              <p>
+                <strong>{{ item.name }}</strong>
+                <br />
+                <code>{{ item.token_prefix }}…</code>
+                <br />
+                <small>
+                  {{ item.scopes.join(', ') }} · {{ status(item) }}
+                  <template v-if="item.last_used_at">
+                    · использован {{ new Date(item.last_used_at).toLocaleString() }}</template
+                  >
+                  <template v-if="item.expires_at">
+                    · до {{ new Date(item.expires_at).toLocaleString() }}</template
+                  >
+                </small>
+              </p>
+            </div>
+          </div>
+          <div class="media-right">
+            <BaseButton v-if="!item.revoked_at" tone="danger" @click="revoke(item)">
+              Отозвать
+            </BaseButton>
+          </div>
+        </article>
+        <p v-if="!items.length" class="has-text-grey">Токенов пока нет.</p>
+      </div>
+      <BaseDialog :open="Boolean(issued)" title="Токен выпущен" @close="closeSecret">
+        <div class="content">
+          <p>
+            <strong>Скопируйте токен сейчас.</strong> После закрытия он больше не будет показан.
+          </p>
+          <pre><code>{{ issued?.token }}</code></pre>
+        </div>
+        <template #actions>
+          <BaseButton tone="quiet" @click="copy">Копировать</BaseButton>
+          <BaseButton @click="closeSecret">Готово</BaseButton>
+        </template>
+      </BaseDialog>
     </div>
-    <BaseDialog :open="Boolean(issued)" title="Токен выпущен" @close="closeSecret"
-      ><p><strong>Скопируйте токен сейчас.</strong> После закрытия он больше не будет показан.</p>
-      <pre class="secret">{{ issued?.token }}</pre>
-      <template #actions
-        ><BaseButton tone="quiet" @click="copy">Копировать</BaseButton
-        ><BaseButton @click="closeSecret">Готово</BaseButton></template
-      ></BaseDialog
-    >
   </section>
 </template>

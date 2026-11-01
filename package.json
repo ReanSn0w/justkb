@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@vueuse/core": "^14.0.0",
+    "bulma": "^1.0.4",
     "dompurify": "^3.3.0",
     "marked": "^16.4.1",
     "pinia": "^3.0.3",

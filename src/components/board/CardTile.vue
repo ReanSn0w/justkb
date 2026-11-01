@@ -5,37 +5,43 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
 </script>
 <template>
   <article
-    class="card-tile"
+    class="card mb-4"
     draggable="true"
     tabindex="0"
     :aria-label="`JKB-${card.number}: ${card.title}`"
     @dragstart="$emit('drag', card)"
   >
-    <RouterLink :to="`/cards/${card.id}`"
-      ><span class="card-number">JKB-{{ card.number }}</span
-      ><strong>{{ card.title }}</strong></RouterLink
-    >
-    <div class="card-meta">
-      <span v-if="card.epic" class="chip" :style="{ borderColor: card.epic.color }">{{
-        card.epic.name
-      }}</span
-      ><span v-if="card.group" class="chip">{{ card.group.name }}</span
-      ><span v-if="card.assignee" class="avatar" :title="card.assignee.display_name">{{
-        card.assignee.display_name.slice(0, 2).toUpperCase()
-      }}</span>
-    </div>
-    <div class="tags">
-      <span
-        v-for="tag in card.tags"
-        :key="tag.id"
-        class="tag"
-        :style="{ backgroundColor: tag.color }"
-        >{{ tag.name }}</span
-      >
-    </div>
-    <div class="keyboard-move">
-      <button aria-label="Переместить в предыдущую колонку" @click="$emit('move', -1)">←</button
-      ><button aria-label="Переместить в следующую колонку" @click="$emit('move', 1)">→</button>
+    <div class="card-content">
+      <RouterLink :to="`/cards/${card.id}`">
+        <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
+        <p class="has-text-weight-semibold">{{ card.title }}</p>
+      </RouterLink>
+      <div class="tags mt-4 mb-2">
+        <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
+        <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
+        <span v-if="card.assignee" class="tag is-info is-light">{{
+          card.assignee.display_name
+        }}</span>
+      </div>
+      <div v-if="card.tags.length" class="tags mb-3">
+        <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">{{ tag.name }}</span>
+      </div>
+      <div class="buttons are-small is-right mb-0">
+        <button
+          class="button is-light"
+          aria-label="Переместить в предыдущую колонку"
+          @click="$emit('move', -1)"
+        >
+          ←
+        </button>
+        <button
+          class="button is-light"
+          aria-label="Переместить в следующую колонку"
+          @click="$emit('move', 1)"
+        >
+          →
+        </button>
+      </div>
     </div>
   </article>
 </template>

@@ -69,97 +69,139 @@ function toggleTag(id: string) {
 }
 </script>
 <template>
-  <section class="page card-page">
-    <StatusState v-if="loading" title="Загружаем карточку…" tone="loading" /><StatusState
-      v-else-if="error && !card"
-      :title="error"
-      tone="error"
-    /><template v-else-if="card"
-      ><header class="card-page__header">
-        <div>
-          <button class="button button--quiet" @click="router.push('/')">← Доска</button>
-          <p class="card-number">JKB-{{ card.number }}</p>
-        </div>
-        <div>
-          <BaseButton tone="quiet" @click="toggleArchive">{{
-            card.is_archived ? 'Восстановить' : 'В архив'
-          }}</BaseButton>
-          <BaseButton @click="save">Сохранить</BaseButton>
-        </div>
-      </header>
-      <p v-if="error" class="field__error" role="alert">
-        {{ error }} <button @click="router.go(0)">Перезагрузить</button>
-      </p>
-      <div class="card-grid">
-        <form class="panel" @submit.prevent="save">
-          <BaseField label="Заголовок"><input v-model.trim="card.title" required /></BaseField
-          ><BaseField label="Описание"
-            ><div class="editor-tabs">
-              <button type="button" @click="preview = false">Markdown</button
-              ><button type="button" @click="preview = true">Preview</button>
+  <section class="section">
+    <div class="container">
+      <StatusState v-if="loading" title="Загружаем карточку…" tone="loading" />
+      <StatusState v-else-if="error && !card" :title="error" tone="error" />
+      <template v-else-if="card">
+        <header class="level">
+          <div class="level-left">
+            <div>
+              <button class="button is-light mb-3" @click="router.push('/')">← Доска</button>
+              <p class="has-text-grey is-size-7">JKB-{{ card.number }}</p>
             </div>
-            <div v-if="preview" class="markdown" v-html="html"></div>
-            <textarea v-else v-model="card.description" rows="12" />
-          </BaseField>
-          <div class="form-grid">
-            <BaseField label="EPIC"
-              ><select v-model="card.epic_id">
-                <option :value="null">Без EPIC</option>
-                <option v-for="epic in board.epics" :key="epic.id" :value="epic.id">
-                  {{ epic.name }}
-                </option>
-              </select></BaseField
-            ><BaseField label="Группа"
-              ><select v-model="card.group_id">
-                <option :value="null">Без группы</option>
-                <option v-for="group in board.groups" :key="group.id" :value="group.id">
-                  {{ group.name }}
-                </option>
-              </select></BaseField
-            ><BaseField label="Исполнитель"
-              ><select v-model="card.assignee_id">
-                <option :value="null">Не назначен</option>
-                <option v-for="user in board.users" :key="user.id" :value="user.id">
-                  {{ user.display_name }}
-                </option>
-              </select></BaseField
-            ><BaseField label="Срок"
-              ><input v-model="card.due_at" type="datetime-local"
-            /></BaseField>
           </div>
-          <fieldset>
-            <legend>Теги</legend>
-            <label v-for="tag in board.tags" :key="tag.id" class="check"
-              ><input
-                type="checkbox"
-                :checked="card.tags.some((t) => t.id === tag.id)"
-                @change="toggleTag(tag.id)"
-              />{{ tag.name }}</label
-            >
-          </fieldset>
-        </form>
-        <aside class="panel">
-          <AttachmentPanel
-            :card-id="card.id"
-            :attachments="card.attachments || []"
-            @change="card.attachments = $event"
-          />
-          <h2>История</h2>
-          <ol class="activity">
-            <li v-for="item in activity" :key="item.id">
-              <strong>{{ item.actor?.display_name || 'Пользователь' }}</strong> {{ item.action
-              }}<small
-                >{{
-                  item.actor_token_id
-                    ? `через MCP${item.token_name ? ' · ' + item.token_name : ''}`
-                    : 'через веб'
-                }}
-                · {{ new Date(item.created_at).toLocaleString() }}</small
-              >
-            </li>
-          </ol>
-          <StatusState v-if="!activity.length" title="История пока пуста" />
-        </aside></div
-    ></template>
+          <div class="level-right">
+            <div class="buttons">
+              <BaseButton tone="quiet" @click="toggleArchive">{{
+                card.is_archived ? 'Восстановить' : 'В архив'
+              }}</BaseButton>
+              <BaseButton @click="save">Сохранить</BaseButton>
+            </div>
+          </div>
+        </header>
+        <div v-if="error" class="notification is-danger is-light" role="alert">
+          {{ error }}
+          <button class="button is-danger is-light is-small" @click="router.go(0)">
+            Перезагрузить
+          </button>
+        </div>
+        <div class="columns is-variable is-5">
+          <div class="column is-two-thirds">
+            <form class="box" @submit.prevent="save">
+              <BaseField label="Заголовок">
+                <input v-model.trim="card.title" class="input" required />
+              </BaseField>
+              <BaseField label="Описание">
+                <div class="tabs is-toggle is-small mb-3">
+                  <ul>
+                    <li :class="{ 'is-active': !preview }">
+                      <a @click="preview = false">Markdown</a>
+                    </li>
+                    <li :class="{ 'is-active': preview }">
+                      <a @click="preview = true">Preview</a>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="preview" class="content box" v-html="html"></div>
+                <textarea v-else v-model="card.description" class="textarea" rows="12" />
+              </BaseField>
+              <div class="columns is-multiline">
+                <div class="column is-half">
+                  <BaseField label="EPIC">
+                    <div class="select is-fullwidth">
+                      <select v-model="card.epic_id">
+                        <option :value="null">Без EPIC</option>
+                        <option v-for="epic in board.epics" :key="epic.id" :value="epic.id">
+                          {{ epic.name }}
+                        </option>
+                      </select>
+                    </div>
+                  </BaseField>
+                </div>
+                <div class="column is-half">
+                  <BaseField label="Группа">
+                    <div class="select is-fullwidth">
+                      <select v-model="card.group_id">
+                        <option :value="null">Без группы</option>
+                        <option v-for="group in board.groups" :key="group.id" :value="group.id">
+                          {{ group.name }}
+                        </option>
+                      </select>
+                    </div>
+                  </BaseField>
+                </div>
+                <div class="column is-half">
+                  <BaseField label="Исполнитель">
+                    <div class="select is-fullwidth">
+                      <select v-model="card.assignee_id">
+                        <option :value="null">Не назначен</option>
+                        <option v-for="user in board.users" :key="user.id" :value="user.id">
+                          {{ user.display_name }}
+                        </option>
+                      </select>
+                    </div>
+                  </BaseField>
+                </div>
+                <div class="column is-half">
+                  <BaseField label="Срок">
+                    <input v-model="card.due_at" class="input" type="datetime-local" />
+                  </BaseField>
+                </div>
+              </div>
+              <fieldset>
+                <legend class="label">Теги</legend>
+                <label v-for="tag in board.tags" :key="tag.id" class="checkbox mr-4 mb-2">
+                  <input
+                    type="checkbox"
+                    :checked="card.tags.some((t) => t.id === tag.id)"
+                    @change="toggleTag(tag.id)"
+                  />
+                  {{ tag.name }}
+                </label>
+              </fieldset>
+            </form>
+          </div>
+          <div class="column">
+            <aside class="box">
+              <AttachmentPanel
+                :card-id="card.id"
+                :attachments="card.attachments || []"
+                @change="card.attachments = $event"
+              />
+              <hr />
+              <h2 class="title is-5">История</h2>
+              <div class="content">
+                <ol>
+                  <li v-for="item in activity" :key="item.id" class="mb-4">
+                    <strong>{{ item.actor?.display_name || 'Пользователь' }}</strong>
+                    {{ item.action }}
+                    <small class="is-block has-text-grey">
+                      {{
+                        item.actor_token_id
+                          ? `через MCP${item.token_name ? ' · ' + item.token_name : ''}`
+                          : 'через веб'
+                      }}
+                      · {{ new Date(item.created_at).toLocaleString() }}
+                    </small>
+                  </li>
+                </ol>
+              </div>
+              <StatusState v-if="!activity.length" title="История пока пуста" />
+            </aside>
+          </div>
+        </div>
+      </template>
+    </div>
   </section>
 </template>

@@ -145,82 +145,149 @@ async function toggleEpic(item: Epic) {
 }
 </script>
 <template>
-  <section class="page settings">
-    <h1>Настройки</h1>
-    <p v-if="error" class="field__error" role="alert">{{ error }}</p>
-    <nav class="tabs" aria-label="Разделы настроек">
-      <button
-        v-for="(_, key) in labels"
-        :key="key"
-        :class="{ selected: tab === key }"
-        @click="tab = key"
-      >
-        {{ labels[key] }}
-      </button>
-    </nav>
-    <form class="panel inline-form" @submit.prevent="create">
-      <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'"
-        ><input v-model.trim="name" required /></BaseField
-      ><BaseField v-if="['groups', 'epics', 'tags'].includes(tab)" label="Цвет"
-        ><input v-model="color" type="color" /></BaseField
-      ><BaseButton type="submit">Добавить</BaseButton>
-    </form>
-    <div class="panel admin-list">
-      <template v-if="tab === 'users'"
-        ><article v-for="user in users" :key="user.id">
-          <div>
-            <strong>{{ user.display_name }}</strong
-            ><small
-              >@{{ user.username }} · {{ user.role }} ·
-              {{ user.is_active ? 'активен' : 'отключён' }}</small
-            >
+  <section class="section">
+    <div class="container">
+      <h1 class="title">Настройки</h1>
+      <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
+      <nav class="tabs is-boxed" aria-label="Разделы настроек">
+        <ul>
+          <li v-for="(_, key) in labels" :key="key" :class="{ 'is-active': tab === key }">
+            <a @click="tab = key">{{ labels[key] }}</a>
+          </li>
+        </ul>
+      </nav>
+      <form class="box" @submit.prevent="create">
+        <div class="columns is-align-items-flex-end">
+          <div class="column">
+            <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'">
+              <input v-model.trim="name" class="input" required />
+            </BaseField>
           </div>
-          <div>
-            <button @click="patchUser(user, { role: user.role === 'admin' ? 'member' : 'admin' })">
-              Сменить роль</button
-            ><button @click="patchUser(user, { is_active: !user.is_active })">
-              {{ user.is_active ? 'Отключить' : 'Включить' }}</button
-            ><button @click="membership(user)">Группы</button
-            ><button @click="password(user)">Пароль</button>
+          <div v-if="['groups', 'epics', 'tags'].includes(tab)" class="column is-one-quarter">
+            <BaseField label="Цвет">
+              <input v-model="color" class="input" type="color" />
+            </BaseField>
           </div>
-        </article></template
-      ><template v-else-if="tab === 'groups'"
-        ><article v-for="item in groups" :key="item.id">
-          <span class="color-dot" :style="{ background: item.color }" /><strong>{{
-            item.name
-          }}</strong
-          ><button @click="rename('groups', item)">Переименовать</button>
-        </article></template
-      ><template v-else-if="tab === 'columns'"
-        ><article v-for="(item, index) in columns" :key="item.id">
-          <strong>{{ item.name }}</strong>
-          <div>
-            <button @click="moveColumn(index, -1)">↑</button
-            ><button @click="moveColumn(index, 1)">↓</button
-            ><button @click="rename('columns', item)">Переименовать</button
-            ><button @click="directoryApi.deleteColumn(item.id).then(load)">Удалить</button>
+          <div class="column is-narrow">
+            <div class="field">
+              <div class="control"><BaseButton type="submit">Добавить</BaseButton></div>
+            </div>
           </div>
-        </article></template
-      ><template v-else-if="tab === 'epics'"
-        ><article v-for="item in epics" :key="item.id">
-          <span class="color-dot" :style="{ background: item.color }" /><strong
-            >{{ item.name }} {{ item.is_archived ? '(архив)' : '' }}</strong
-          >
-          <div>
-            <button @click="rename('epics', item)">Переименовать</button
-            ><button @click="toggleEpic(item)">
-              {{ item.is_archived ? 'Восстановить' : 'Архивировать' }}
-            </button>
-          </div>
-        </article></template
-      ><template v-else
-        ><article v-for="item in tags" :key="item.id">
-          <span class="color-dot" :style="{ background: item.color }" /><strong>{{
-            item.name
-          }}</strong
-          ><button @click="rename('tags', item)">Переименовать</button>
-        </article></template
-      >
+        </div>
+      </form>
+      <div class="box">
+        <template v-if="tab === 'users'">
+          <article v-for="user in users" :key="user.id" class="media">
+            <div class="media-content">
+              <div class="content">
+                <p>
+                  <strong>{{ user.display_name }}</strong>
+                  <br />
+                  <small>
+                    @{{ user.username }} · {{ user.role }} ·
+                    {{ user.is_active ? 'активен' : 'отключён' }}
+                  </small>
+                </p>
+              </div>
+            </div>
+            <div class="media-right">
+              <div class="buttons are-small">
+                <button
+                  class="button is-light"
+                  @click="patchUser(user, { role: user.role === 'admin' ? 'member' : 'admin' })"
+                >
+                  Сменить роль
+                </button>
+                <button
+                  class="button is-light"
+                  @click="patchUser(user, { is_active: !user.is_active })"
+                >
+                  {{ user.is_active ? 'Отключить' : 'Включить' }}
+                </button>
+                <button class="button is-light" @click="membership(user)">Группы</button>
+                <button class="button is-light" @click="password(user)">Пароль</button>
+              </div>
+            </div>
+          </article>
+        </template>
+        <template v-else-if="tab === 'groups'">
+          <article v-for="item in groups" :key="item.id" class="media">
+            <div class="media-content">
+              <span class="tag is-primary is-light">{{ item.name }}</span>
+            </div>
+            <div class="media-right">
+              <button class="button is-light is-small" @click="rename('groups', item)">
+                Переименовать
+              </button>
+            </div>
+          </article>
+        </template>
+        <template v-else-if="tab === 'columns'">
+          <article v-for="(item, index) in columns" :key="item.id" class="media">
+            <div class="media-content">
+              <strong>{{ item.name }}</strong>
+            </div>
+            <div class="media-right">
+              <div class="buttons are-small">
+                <button class="button is-light" @click="moveColumn(index, -1)">↑</button>
+                <button class="button is-light" @click="moveColumn(index, 1)">↓</button>
+                <button class="button is-light" @click="rename('columns', item)">
+                  Переименовать
+                </button>
+                <button
+                  class="button is-danger is-light"
+                  @click="directoryApi.deleteColumn(item.id).then(load)"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </article>
+        </template>
+        <template v-else-if="tab === 'epics'">
+          <article v-for="item in epics" :key="item.id" class="media">
+            <div class="media-content">
+              <span class="tag is-link is-light">
+                {{ item.name }} {{ item.is_archived ? '(архив)' : '' }}
+              </span>
+            </div>
+            <div class="media-right">
+              <div class="buttons are-small">
+                <button class="button is-light" @click="rename('epics', item)">
+                  Переименовать
+                </button>
+                <button class="button is-light" @click="toggleEpic(item)">
+                  {{ item.is_archived ? 'Восстановить' : 'Архивировать' }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </template>
+        <template v-else>
+          <article v-for="item in tags" :key="item.id" class="media">
+            <div class="media-content">
+              <span class="tag is-info">{{ item.name }}</span>
+            </div>
+            <div class="media-right">
+              <button class="button is-light is-small" @click="rename('tags', item)">
+                Переименовать
+              </button>
+            </div>
+          </article>
+        </template>
+        <p
+          v-if="
+            (tab === 'users' && !users.length) ||
+            (tab === 'groups' && !groups.length) ||
+            (tab === 'columns' && !columns.length) ||
+            (tab === 'epics' && !epics.length) ||
+            (tab === 'tags' && !tags.length)
+          "
+          class="has-text-grey"
+        >
+          Записей пока нет.
+        </p>
+      </div>
     </div>
   </section>
 </template>

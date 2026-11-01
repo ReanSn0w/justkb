@@ -2,9 +2,11 @@
 defineProps<{ label: string; hint?: string; error?: string; forId?: string }>()
 </script>
 <template>
-  <label class="field" :for="forId"
-    ><span class="field__label">{{ label }}</span
-    ><slot /><small v-if="error" class="field__error">{{ error }}</small
-    ><small v-else-if="hint" class="muted">{{ hint }}</small></label
-  >
+  <div class="field">
+    <label v-if="forId" class="label" :for="forId">{{ label }}</label>
+    <p v-else class="label">{{ label }}</p>
+    <div class="control"><slot /></div>
+    <p v-if="error" class="help is-danger">{{ error }}</p>
+    <p v-else-if="hint" class="help">{{ hint }}</p>
+  </div>
 </template>

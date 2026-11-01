@@ -1,5 +1,7 @@
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     type?: 'button' | 'submit'
     tone?: 'primary' | 'quiet' | 'danger'
@@ -7,7 +9,10 @@ withDefaults(
   }>(),
   { type: 'button', tone: 'primary' },
 )
+const toneClass = computed(
+  () => ({ primary: 'is-primary', quiet: 'is-light', danger: 'is-danger' })[props.tone],
+)
 </script>
 <template>
-  <button :type="type" :class="['button', `button--${tone}`]" :disabled="disabled"><slot /></button>
+  <button :type="type" :class="['button', toneClass]" :disabled="disabled"><slot /></button>
 </template>

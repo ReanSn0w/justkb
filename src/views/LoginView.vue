@@ -29,22 +29,40 @@ async function submit() {
 }
 </script>
 <template>
-  <main class="centered">
-    <form class="auth-card" @submit.prevent="submit">
-      <h1>Вход в JKB</h1>
-      <p class="muted">Лёгкая доска без лишнего церемониала.</p>
-      <BaseField label="Имя пользователя" for-id="username"
-        ><input id="username" v-model.trim="username" autocomplete="username" required /></BaseField
-      ><BaseField label="Пароль" for-id="password"
-        ><input
-          id="password"
-          v-model="password"
-          type="password"
-          autocomplete="current-password"
-          required
-      /></BaseField>
-      <p v-if="error" class="field__error" role="alert">{{ error }}</p>
-      <BaseButton type="submit" :disabled="busy">{{ busy ? 'Входим…' : 'Войти' }}</BaseButton>
-    </form>
+  <main class="hero is-fullheight is-light">
+    <div class="hero-body">
+      <div class="container">
+        <div class="columns is-centered">
+          <div class="column is-one-third-desktop is-half-tablet">
+            <form class="box" @submit.prevent="submit">
+              <h1 class="title">Вход в JKB</h1>
+              <p class="subtitle is-6">Лёгкая доска без лишнего церемониала.</p>
+              <BaseField label="Имя пользователя" for-id="username"
+                ><input
+                  id="username"
+                  v-model.trim="username"
+                  class="input"
+                  autocomplete="username"
+                  required /></BaseField
+              ><BaseField label="Пароль" for-id="password"
+                ><input
+                  id="password"
+                  v-model="password"
+                  class="input"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+              /></BaseField>
+              <div v-if="error" class="notification is-danger is-light" role="alert">
+                {{ error }}
+              </div>
+              <BaseButton type="submit" :disabled="busy">{{
+                busy ? 'Входим…' : 'Войти'
+              }}</BaseButton>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
