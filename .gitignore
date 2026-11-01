@@ -4,3 +4,4 @@ internal/frontend/dist/*
 coverage/
 .DS_Store
 *.log
+.local-deploy/
