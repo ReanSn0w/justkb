@@ -3,11 +3,10 @@ package backups
 import (
 	"archive/tar"
 	"compress/gzip"
-	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -24,7 +23,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "avatars", "user"), []byte("avatar"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dump := filepath.Join(t.TempDir(), "database.dump")
+	dump := filepath.Join(t.TempDir(), "database.sqlite")
 	if err := os.WriteFile(dump, []byte("database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -73,25 +72,27 @@ func TestExtractRejectsTraversal(t *testing.T) {
 	}
 }
 
-func TestPostgresPasswordIsKeptOutOfCommandURL(t *testing.T) {
-	service := &Service{databaseURL: "postgres://jkb:s3cret@db:5432/jkb?sslmode=disable"}
-	workDir := t.TempDir()
-	dsn, environment, err := service.postgresEnvironment(workDir)
+func TestExtractRejectsLegacyBackupFormat(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "storage")
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(t.TempDir(), "database.sqlite")
+	if err := os.WriteFile(databasePath, []byte("legacy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "legacy.tar.gz")
+	manifest := Manifest{Format: Format, Version: 1, CreatedAt: time.Now().UTC(), SchemaVersion: 4}
+	if err := writeArchive(archivePath, databasePath, root, manifest); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.Open(archivePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(dsn, "s3cret") {
-		t.Fatal("password leaked into command URL")
-	}
-	if !strings.Contains(strings.Join(environment, "\n"), "PGPASSFILE=") {
-		t.Fatal("PGPASSFILE was not configured")
-	}
-}
-
-func TestUnavailablePostgresTool(t *testing.T) {
-	err := runCommand(context.Background(), filepath.Join(t.TempDir(), "missing"), os.Environ())
-	if err == nil || !strings.Contains(err.Error(), ErrUnavailable.Error()) {
-		t.Fatalf("unexpected error: %v", err)
+	defer archive.Close()
+	if _, _, _, err := extractArchive(archive, t.TempDir()); !errors.Is(err, ErrInvalidArchive) {
+		t.Fatalf("error=%v want ErrInvalidArchive", err)
 	}
 }
 

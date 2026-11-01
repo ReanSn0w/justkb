@@ -823,8 +823,6 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "invalid_backup", "Backup archive is invalid"
 	case errors.Is(err, backups.ErrSchemaMismatch):
 		status, code, message = http.StatusConflict, "backup_schema_mismatch", "Backup schema version does not match"
-	case errors.Is(err, backups.ErrUnavailable):
-		status, code, message = http.StatusServiceUnavailable, "backup_unavailable", "PostgreSQL backup tools are unavailable"
 	}
 	writeAPIError(w, r, status, code, message, nil)
 }
