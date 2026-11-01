@@ -186,6 +186,20 @@ func (s *Service) ResetUserPassword(ctx context.Context, userID, password string
 	return tx.Commit()
 }
 
+func (s *Service) ResetUserPasswordByUsername(ctx context.Context, username, password string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return ErrValidation
+	}
+	var userID string
+	if err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE lower(username)=lower($1)`, username).Scan(&userID); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return s.ResetUserPassword(ctx, userID, password)
+}
+
 func (s *Service) ListGroups(ctx context.Context) ([]Group, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, color, description FROM user_groups ORDER BY lower(name), id`)
 	if err != nil {

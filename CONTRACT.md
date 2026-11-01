@@ -127,7 +127,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Backups | `POST /admin/backups`; `POST /admin/backups/restore` | Только admin |
 | System | `GET /system` | Публично; возвращает имя системы |
 
-Первый admin создаётся после миграций командой `jkb-admin user add --role admin --display-name "Administrator" admin`. Эта же команда создаёт обычных пользователей (`member` по умолчанию); пароль вводится и подтверждается интерактивно. Сервер не имеет общедоступного setup endpoint.
+Первый admin создаётся после миграций командой `jkb-admin user add --role admin --display-name "Administrator" admin`. Эта же команда создаёт обычных пользователей (`member` по умолчанию); пароль вводится и подтверждается интерактивно. `jkb-admin user password <username>` сбрасывает пароль и отзывает web-сессии этого пользователя. Сервер не имеет общедоступного setup endpoint.
 
 `GET /users/{id}/avatar` возвращает аватар авторизованному участнику. Аватары хранятся локально в `avatars` внутри каталога хранилища; принимаются JPEG, PNG, GIF и WebP размером до 5 МБ.
 

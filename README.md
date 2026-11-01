@@ -124,12 +124,18 @@ docker compose run --rm app /usr/local/bin/jkb-admin user add \
 
 Роль по умолчанию — `member`. Для администратора передайте `--role admin`.
 Отображаемое имя по умолчанию совпадает с логином, email необязателен.
+Сброс пароля с отзывом всех web-сессий пользователя:
+
+```sh
+docker compose run --rm app /usr/local/bin/jkb-admin user password admin
+```
 
 Справка:
 
 ```sh
 docker compose run --rm app /usr/local/bin/jkb-admin --help
 docker compose run --rm app /usr/local/bin/jkb-admin user add --help
+docker compose run --rm app /usr/local/bin/jkb-admin user password --help
 ```
 
 ## Remote MCP

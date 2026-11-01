@@ -20,11 +20,13 @@ import (
 
 const usage = `Usage:
   jkb-admin user add [options] <username>
+  jkb-admin user password <username>
 
 Commands:
-  user add    Create an active user
+  user add         Create an active user
+  user password    Reset a user's password and revoke their web sessions
 
-Run "jkb-admin user add --help" for command options.`
+Run "jkb-admin user <command> --help" for command options.`
 
 type userAddOptions struct {
 	Username    string
@@ -45,10 +47,22 @@ func run(args []string) error {
 		fmt.Fprintln(os.Stdout, usage)
 		return nil
 	}
-	if len(args) < 2 || args[0] != "user" || args[1] != "add" {
+	if len(args) < 2 || args[0] != "user" {
 		return errors.New(usage)
 	}
-	options, err := parseUserAdd(args[2:], os.Stderr)
+	var addOptions *userAddOptions
+	var username string
+	var err error
+	switch args[1] {
+	case "add":
+		options, parseErr := parseUserAdd(args[2:], os.Stderr)
+		err = parseErr
+		addOptions = &options
+	case "password":
+		username, err = parseUserPassword(args[2:], os.Stderr)
+	default:
+		return errors.New(usage)
+	}
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
 	}
@@ -73,18 +87,26 @@ func run(args []string) error {
 		return err
 	}
 	defer clear(password)
-	user, err := board.NewService(db).CreateUser(
-		ctx,
-		options.Username,
-		options.DisplayName,
-		options.Email,
-		options.Role,
-		string(password),
-	)
-	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+	service := board.NewService(db)
+	if addOptions != nil {
+		user, err := service.CreateUser(
+			ctx,
+			addOptions.Username,
+			addOptions.DisplayName,
+			addOptions.Email,
+			addOptions.Role,
+			string(password),
+		)
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		fmt.Fprintf(os.Stdout, "created %s user %s (%s)\n", user.Role, user.Username, user.ID)
+		return nil
 	}
-	fmt.Fprintf(os.Stdout, "created %s user %s (%s)\n", user.Role, user.Username, user.ID)
+	if err := service.ResetUserPasswordByUsername(ctx, username, string(password)); err != nil {
+		return fmt.Errorf("reset user password: %w", err)
+	}
+	fmt.Fprintf(os.Stdout, "reset password for user %s and revoked web sessions\n", username)
 	return nil
 }
 
@@ -120,6 +142,25 @@ func parseUserAdd(args []string, output io.Writer) (userAddOptions, error) {
 		return userAddOptions{}, errors.New("role must be admin or member")
 	}
 	return options, nil
+}
+
+func parseUserPassword(args []string, output io.Writer) (string, error) {
+	flags := flag.NewFlagSet("user password", flag.ContinueOnError)
+	flags.SetOutput(output)
+	flags.Usage = func() {
+		fmt.Fprintln(output, "Usage: jkb-admin user password <username>")
+	}
+	if err := flags.Parse(args); err != nil {
+		return "", err
+	}
+	if flags.NArg() != 1 {
+		return "", errors.New("user password requires exactly one username")
+	}
+	username := strings.TrimSpace(flags.Arg(0))
+	if username == "" {
+		return "", errors.New("username must not be blank")
+	}
+	return username, nil
 }
 
 func readPassword(input *os.File, output io.Writer) ([]byte, error) {

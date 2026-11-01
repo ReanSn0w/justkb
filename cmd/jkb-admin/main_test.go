@@ -43,3 +43,15 @@ func TestParseUserAddRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestParseUserPassword(t *testing.T) {
+	username, err := parseUserPassword([]string{"admin"}, io.Discard)
+	if err != nil || username != "admin" {
+		t.Fatalf("username=%q err=%v", username, err)
+	}
+	for _, args := range [][]string{nil, {"admin", "other"}, {" "}} {
+		if _, err := parseUserPassword(args, io.Discard); err == nil {
+			t.Fatalf("expected error for %#v", args)
+		}
+	}
+}

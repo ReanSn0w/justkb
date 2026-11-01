@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/ReanSn0w/justkb/internal/auth"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -32,6 +34,12 @@ func TestReferenceDataIntegration(t *testing.T) {
 	user, err := service.CreateUser(ctx, "developer", "Developer", "", "member", "correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := service.ResetUserPasswordByUsername(ctx, "DEVELOPER", "another correct password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.NewService(db).Login(ctx, "developer", "another correct password", time.Hour); err != nil {
+		t.Fatalf("login after password reset: %v", err)
 	}
 	if err := service.SetUserGroups(ctx, user.ID, []string{group.ID}); err != nil {
 		t.Fatal(err)
