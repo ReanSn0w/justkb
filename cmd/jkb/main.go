@@ -41,6 +41,7 @@ func main() {
 		Database:          db,
 		DB:                db,
 		DatabaseURL:       cfg.DatabaseURL,
+		SystemName:        cfg.SystemName,
 		CookieSecure:      cfg.CookieSecure,
 		AttachmentMaxSize: cfg.AttachmentMaxSize,
 	})

@@ -46,6 +46,9 @@ export const authApi = {
   password: (current_password: string, new_password: string) =>
     request<void>('/auth/password', json('PUT', { current_password, new_password })),
 }
+export const systemApi = {
+  get: () => request<{ name: string }>('/system'),
+}
 export const directoryApi = {
   users: () => request<ListResult<User>>('/users?limit=100'),
   createUser: (data: unknown) => request<User>('/users', json('POST', data)),

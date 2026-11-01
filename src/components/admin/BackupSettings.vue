@@ -59,7 +59,7 @@ async function restoreBackup() {
       cause instanceof ApiError && cause.code === 'backup_schema_mismatch'
         ? 'Версия схемы резервной копии не совпадает с текущей системой'
         : cause instanceof ApiError && cause.code === 'invalid_backup'
-          ? 'Файл не является корректной резервной копией JKB'
+          ? 'Файл не является корректной резервной копией системы'
           : 'Восстановление не выполнено. Проверьте состояние сервиса и журналы перед повторной попыткой.'
   } finally {
     busy.value = false
@@ -93,7 +93,7 @@ async function restoreBackup() {
         <h2 class="title is-4">Восстановить систему</h2>
         <div class="notification is-danger is-light">
           Восстановление заменит всех пользователей, задачи, настройки и локальные файлы. Архив
-          должен быть создан той же версией схемы JKB.
+          должен быть создан той же версией схемы системы.
         </div>
         <div class="file has-name is-fullwidth mb-4">
           <label class="file-label">

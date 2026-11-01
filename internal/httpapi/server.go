@@ -21,6 +21,7 @@ type Dependencies struct {
 	Database          ReadyChecker
 	DB                *sql.DB
 	DatabaseURL       string
+	SystemName        string
 	CookieSecure      bool
 	AttachmentMaxSize int64
 }
@@ -28,8 +29,13 @@ type Dependencies struct {
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	gate := &maintenance.Gate{}
+	systemName := deps.SystemName
+	if systemName == "" {
+		systemName = "JKB"
+	}
 	mux.HandleFunc("GET /health/live", liveHandler)
 	mux.HandleFunc("GET /health/ready", readyHandler(deps.StoragePath, deps.Database))
+	mux.HandleFunc("GET /api/v1/system", systemHandler(systemName))
 	if deps.DB != nil {
 		registerAPI(mux, deps, gate)
 		mux.Handle("/mcp", mcpserver.NewHandler(deps.DB))

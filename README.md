@@ -174,6 +174,7 @@ API-токены используются MCP endpoint. Контракт сущ�
 | -------------------------- | ----------: | --------------------- | -------------------------------------------- |
 | `JKB_DATABASE_URL`         |          да | —                     | PostgreSQL connection URL                    |
 | `JKB_STORAGE_PATH`         |         нет | `./storage`           | каталог вложений и аватаров                  |
+| `JKB_SYSTEM_NAME`          |         нет | `JKB`                 | имя системы в web-интерфейсе                 |
 | `JKB_LISTEN_ADDRESS`       |         нет | `:8080`               | адрес HTTP-сервера                           |
 | `JKB_PUBLIC_URL`           |         нет | —                     | зарезервированный внешний origin приложения  |
 | `JKB_COOKIE_SECURE`        |         нет | `true`                | отправлять session cookie только через HTTPS |
@@ -181,6 +182,9 @@ API-токены используются MCP endpoint. Контракт сущ�
 | `JKB_SHUTDOWN_TIMEOUT`     |         нет | `15s`                 | таймаут graceful shutdown                    |
 
 Аватар ограничен 5 МБ независимо от `JKB_ATTACHMENT_MAX_BYTES`.
+`JKB_SYSTEM_NAME=GostAssistent` меняет название в навигации, на экране
+входа и в заголовке вкладки. Технические идентификаторы (`JKB-42`,
+`jkb_pat_...`, имена cookie и backup-файлов) остаются стабильными.
 
 ### Переменные Compose
 
@@ -188,6 +192,7 @@ API-токены используются MCP endpoint. Контракт сущ�
 | ------------------- | ----------------------- | ----------------------------- |
 | `POSTGRES_PASSWORD` | —                       | пароль PostgreSQL; обязателен |
 | `JKB_PORT`          | `8080`                  | порт приложения на хосте      |
+| `JKB_SYSTEM_NAME`   | `JKB`                   | имя системы в web-интерфейсе  |
 | `JKB_PUBLIC_URL`    | `http://localhost:8080` | зарезервированный внешний URL |
 | `JKB_COOKIE_SECURE` | `true`                  | secure-флаг cookie            |
 

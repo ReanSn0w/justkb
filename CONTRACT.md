@@ -125,6 +125,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Projects (`epics`) | `GET, POST /epics`; `GET, PATCH /epics/{id}`; `POST /epics/{id}/attachments` | Чтение — все, изменение — admin; вложения — все |
 | Tags | `GET, POST /tags`; `GET, PATCH /tags/{id}` | Чтение — все, изменение — admin |
 | Backups | `POST /admin/backups`; `POST /admin/backups/restore` | Только admin |
+| System | `GET /system` | Публично; возвращает имя системы |
 
 Первый admin создаётся после миграций командой `jkb-admin user add --role admin --display-name "Administrator" admin`. Эта же команда создаёт обычных пользователей (`member` по умолчанию); пароль вводится и подтверждается интерактивно. Сервер не имеет общедоступного setup endpoint.
 

@@ -24,6 +24,13 @@ func readyHandler(storagePath string, database ReadyChecker) http.HandlerFunc {
 	}
 }
 
+func systemHandler(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]string{"name": name})
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)

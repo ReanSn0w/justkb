@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '../stores/session'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
+import { systemName } from '../system'
 const username = ref('')
 const password = ref('')
 const error = ref('')
@@ -35,7 +36,7 @@ async function submit() {
         <div class="columns is-centered">
           <div class="column is-one-third-desktop is-half-tablet">
             <form class="box" @submit.prevent="submit">
-              <h1 class="title">Вход в JKB</h1>
+              <h1 class="title">Вход в {{ systemName }}</h1>
               <BaseField label="Имя пользователя" for-id="username"
                 ><input
                   id="username"

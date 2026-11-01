@@ -13,6 +13,7 @@ type Config struct {
 	ListenAddress     string
 	DatabaseURL       string
 	StoragePath       string
+	SystemName        string
 	PublicURL         string
 	CookieSecure      bool
 	AttachmentMaxSize int64
@@ -24,6 +25,7 @@ func Load() (Config, error) {
 		ListenAddress:     envOrDefault("JKB_LISTEN_ADDRESS", ":8080"),
 		DatabaseURL:       strings.TrimSpace(os.Getenv("JKB_DATABASE_URL")),
 		StoragePath:       envOrDefault("JKB_STORAGE_PATH", "./storage"),
+		SystemName:        envOrDefault("JKB_SYSTEM_NAME", "JKB"),
 		PublicURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("JKB_PUBLIC_URL")), "/"),
 		CookieSecure:      true,
 		AttachmentMaxSize: 25 << 20,
@@ -57,6 +59,9 @@ func Load() (Config, error) {
 	}
 	if cfg.StoragePath == "" {
 		return Config{}, errors.New("JKB_STORAGE_PATH is required")
+	}
+	if len([]rune(cfg.SystemName)) > 80 {
+		return Config{}, errors.New("JKB_SYSTEM_NAME must not exceed 80 characters")
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, errors.New("JKB_SHUTDOWN_TIMEOUT must be positive")

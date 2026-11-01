@@ -4,6 +4,7 @@ import { onClickOutside } from '@vueuse/core'
 import { useSessionStore } from '../stores/session'
 import { useRouter } from 'vue-router'
 import UserAvatar from '../components/user/UserAvatar.vue'
+import { systemName } from '../system'
 const session = useSessionStore()
 const router = useRouter()
 const menuOpen = ref(false)
@@ -29,7 +30,7 @@ async function logout() {
   <nav class="navbar is-light" aria-label="Основная навигация">
     <div class="navbar-brand">
       <RouterLink class="navbar-item title is-4 mb-0 has-text-primary" to="/" @click="closeMenus">
-        JKB
+        {{ systemName }}
       </RouterLink>
       <button
         :class="['navbar-burger', { 'is-active': menuOpen }]"
