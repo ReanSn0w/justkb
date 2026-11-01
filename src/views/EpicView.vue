@@ -19,7 +19,6 @@ const epic = ref<Epic | null>(null)
 const cards = ref<Card[]>([])
 const loading = ref(true)
 const error = ref('')
-const preview = ref(false)
 const isAdmin = computed(() => session.user?.role === 'admin')
 const editing = computed(() => route.name === 'project-edit')
 const html = computed(() => renderMarkdown(epic.value?.description || ''))
@@ -111,18 +110,7 @@ async function cancelEdit() {
                 <input v-model.trim="epic.name" class="input" required />
               </BaseField>
               <BaseField label="Описание">
-                <div class="tabs is-toggle is-small mb-3">
-                  <ul>
-                    <li :class="{ 'is-active': !preview }">
-                      <a @click="preview = false">Markdown</a>
-                    </li>
-                    <li :class="{ 'is-active': preview }">
-                      <a @click="preview = true">Preview</a>
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="preview" class="content box" v-html="html"></div>
-                <textarea v-else v-model="epic.description" class="textarea" rows="14" />
+                <textarea v-model="epic.description" class="textarea" rows="14" />
               </BaseField>
             </form>
             <div v-else class="box">

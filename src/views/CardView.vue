@@ -17,8 +17,7 @@ const route = useRoute(),
   card = ref<Card | null>(null),
   activity = ref<Activity[]>([]),
   loading = ref(true),
-  error = ref(''),
-  preview = ref(false)
+  error = ref('')
 const html = computed(() => renderMarkdown(card.value?.description || ''))
 const editing = computed(() => route.name === 'card-edit')
 const columnName = computed(
@@ -123,18 +122,7 @@ function toggleTag(id: string) {
                 <input v-model.trim="card.title" class="input" required />
               </BaseField>
               <BaseField label="Описание">
-                <div class="tabs is-toggle is-small mb-3">
-                  <ul>
-                    <li :class="{ 'is-active': !preview }">
-                      <a @click="preview = false">Markdown</a>
-                    </li>
-                    <li :class="{ 'is-active': preview }">
-                      <a @click="preview = true">Preview</a>
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="preview" class="content box" v-html="html"></div>
-                <textarea v-else v-model="card.description" class="textarea" rows="12" />
+                <textarea v-model="card.description" class="textarea" rows="12" />
               </BaseField>
               <div class="columns is-multiline">
                 <div class="column is-half">
