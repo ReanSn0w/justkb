@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type User } from '../api'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
@@ -8,6 +8,8 @@ import BackupSettings from '../components/admin/BackupSettings.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
 type Tab = DirectoryTab | 'backup'
+type RenameKind = Exclude<DirectoryTab, 'users'>
+type RenameItem = Group | BoardColumn | Tag
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
   groups: 'Команды',
@@ -23,6 +25,11 @@ const users = ref<User[]>([]),
   name = ref(''),
   color = ref('#00d1b2'),
   error = ref(''),
+  renaming = ref<{ kind: RenameKind; item: RenameItem } | null>(null),
+  renameName = ref(''),
+  renameError = ref(''),
+  renameBusy = ref(false),
+  renameInput = ref<HTMLInputElement | null>(null),
   toasts = useToastStore()
 async function load() {
   try {
@@ -98,24 +105,45 @@ async function moveColumn(index: number, delta: number) {
   await directoryApi.reorderColumns(next.map((x) => x.id))
   await load()
 }
-async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardColumn | Tag) {
-  const value = prompt('Новое название', item.name)
-  if (!value) return
-  if (kind === 'groups') {
-    const group = item as Group
-    await directoryApi.updateGroup(group.id, {
-      name: value,
-      color: group.color,
-      description: group.description,
-    })
-  } else if (kind === 'columns') {
-    const column = item as BoardColumn
-    await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
-  } else {
-    const tag = item as Tag
-    await directoryApi.updateTag(tag.id, { name: value, color: tag.color })
+function startRename(kind: RenameKind, item: RenameItem) {
+  renaming.value = { kind, item }
+  renameName.value = item.name
+  renameError.value = ''
+  void nextTick(() => renameInput.value?.focus())
+}
+function cancelRename() {
+  if (renameBusy.value) return
+  renaming.value = null
+}
+async function saveRename() {
+  const current = renaming.value,
+    value = renameName.value.trim()
+  if (!current || !value) return
+  renameBusy.value = true
+  renameError.value = ''
+  try {
+    if (current.kind === 'groups') {
+      const group = current.item as Group
+      await directoryApi.updateGroup(group.id, {
+        name: value,
+        color: group.color,
+        description: group.description,
+      })
+    } else if (current.kind === 'columns') {
+      const column = current.item as BoardColumn
+      await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
+    } else {
+      const tag = current.item as Tag
+      await directoryApi.updateTag(tag.id, { name: value, color: tag.color })
+    }
+    await load()
+    renaming.value = null
+    toasts.show('Название обновлено')
+  } catch {
+    renameError.value = 'Не удалось изменить название'
+  } finally {
+    renameBusy.value = false
   }
-  await load()
 }
 </script>
 <template>
@@ -187,7 +215,9 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
               <span class="tag is-primary">{{ item.name }}</span>
             </div>
             <div class="media-right">
-              <button class="button is-small" @click="rename('groups', item)">Переименовать</button>
+              <button class="button is-small" type="button" @click="startRename('groups', item)">
+                Переименовать
+              </button>
             </div>
           </article>
         </template>
@@ -200,7 +230,9 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
               <div class="buttons are-small">
                 <button class="button" @click="moveColumn(index, -1)">↑</button>
                 <button class="button" @click="moveColumn(index, 1)">↓</button>
-                <button class="button" @click="rename('columns', item)">Переименовать</button>
+                <button class="button" type="button" @click="startRename('columns', item)">
+                  Переименовать
+                </button>
                 <button
                   class="button is-danger"
                   @click="directoryApi.deleteColumn(item.id).then(load)"
@@ -217,7 +249,9 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
               <span class="tag is-info">{{ item.name }}</span>
             </div>
             <div class="media-right">
-              <button class="button is-small" @click="rename('tags', item)">Переименовать</button>
+              <button class="button is-small" type="button" @click="startRename('tags', item)">
+                Переименовать
+              </button>
             </div>
           </article>
         </template>
@@ -234,6 +268,39 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
         </p>
       </div>
       <BackupSettings v-else />
+      <div v-if="renaming" class="modal is-active" role="dialog" aria-modal="true">
+        <div class="modal-background" @click="cancelRename" />
+        <div class="modal-card">
+          <header class="modal-card-head">
+            <h2 class="modal-card-title">Переименовать</h2>
+            <button class="delete" type="button" aria-label="Закрыть" @click="cancelRename" />
+          </header>
+          <form @submit.prevent="saveRename">
+            <section class="modal-card-body">
+              <div v-if="renameError" class="notification is-danger" role="alert">
+                {{ renameError }}
+              </div>
+              <BaseField label="Новое название">
+                <input
+                  ref="renameInput"
+                  v-model="renameName"
+                  class="input"
+                  required
+                  :disabled="renameBusy"
+                />
+              </BaseField>
+            </section>
+            <footer class="modal-card-foot">
+              <button class="button is-primary" type="submit" :class="{ 'is-loading': renameBusy }">
+                Сохранить
+              </button>
+              <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
+                Отмена
+              </button>
+            </footer>
+          </form>
+        </div>
+      </div>
     </div>
   </section>
 </template>
