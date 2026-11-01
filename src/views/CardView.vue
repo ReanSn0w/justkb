@@ -9,8 +9,8 @@ import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
+import CardInfoPanel from '../components/card/CardInfoPanel.vue'
 import CommentPanel from '../components/comments/CommentPanel.vue'
-import UserAvatar from '../components/user/UserAvatar.vue'
 const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
@@ -177,27 +177,24 @@ function toggleTag(id: string) {
             </form>
             <article v-else class="box">
               <h1 class="title">{{ card.title }}</h1>
-              <div class="tags">
-                <span class="tag">{{ columnName }}</span>
-                <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
-                <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
-                <span v-if="card.assignee" class="tag is-info">
-                  <UserAvatar :user="card.assignee" :size="24" />
-                  <span class="ml-1">{{ card.assignee.display_name }}</span>
-                </span>
-                <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">
-                  {{ tag.name }}
-                </span>
-                <span v-if="card.due_at" class="tag is-warning">
-                  Срок: {{ new Date(card.due_at).toLocaleString() }}
-                </span>
-              </div>
-              <div v-if="card.description" class="content mt-5" v-html="html"></div>
+              <div v-if="card.description" class="content" v-html="html"></div>
               <StatusState v-else title="Описание пока не добавлено" />
             </article>
+            <CardInfoPanel
+              v-if="!editing"
+              class="is-hidden-tablet"
+              :card="card"
+              :column-name="columnName"
+            />
             <CommentPanel :entity-id="card.id" entity-type="card" />
           </div>
           <div class="column">
+            <CardInfoPanel
+              v-if="!editing"
+              class="is-hidden-mobile"
+              :card="card"
+              :column-name="columnName"
+            />
             <aside class="box">
               <AttachmentPanel
                 :entity-id="card.id"
