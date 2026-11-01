@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestAttachmentLifecycleIntegration(t *testing.T) {

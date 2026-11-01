@@ -85,7 +85,7 @@ func run(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	db, err := database.Open(ctx, cfg.DatabaseURL)
+	db, err := database.Open(ctx, cfg.DatabasePath)
 	if err != nil {
 		return err
 	}

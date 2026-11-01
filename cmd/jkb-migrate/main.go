@@ -22,7 +22,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	db, err := database.Open(ctx, cfg.DatabaseURL)
+	db, err := database.Open(ctx, cfg.DatabasePath)
 	if err != nil {
 		log.Fatal(err)
 	}

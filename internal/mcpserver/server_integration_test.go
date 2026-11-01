@@ -13,7 +13,6 @@ import (
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/tokens"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

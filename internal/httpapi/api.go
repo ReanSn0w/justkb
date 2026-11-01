@@ -49,7 +49,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 	if err != nil {
 		panic(err)
 	}
-	backupService, err := backups.NewService(deps.DB, deps.DatabaseURL, deps.StoragePath, gate)
+	backupService, err := backups.NewService(deps.DB, deps.DatabasePath, deps.StoragePath, gate)
 	if err != nil {
 		panic(err)
 	}

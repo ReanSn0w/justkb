@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestRESTContractIntegration(t *testing.T) {
@@ -41,7 +40,7 @@ func TestRESTContractIntegration(t *testing.T) {
 	}
 	handler := New(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), StoragePath: t.TempDir(), Database: db, DB: db,
-		DatabaseURL: url, AttachmentMaxSize: 1024, CookieSecure: false,
+		DatabasePath: url, AttachmentMaxSize: 1024, CookieSecure: false,
 	})
 
 	unauthorized := request(handler, http.MethodGet, "/api/v1/cards", "", nil, "")

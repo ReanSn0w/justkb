@@ -9,7 +9,6 @@ import (
 
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/maintenance"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestBackupRestoreIntegration(t *testing.T) {

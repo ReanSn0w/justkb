@@ -20,7 +20,7 @@ type Dependencies struct {
 	StoragePath       string
 	Database          ReadyChecker
 	DB                *sql.DB
-	DatabaseURL       string
+	DatabasePath      string
 	SystemName        string
 	CookieSecure      bool
 	AttachmentMaxSize int64
