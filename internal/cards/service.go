@@ -530,8 +530,8 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		LEFT JOIN user_groups card_group ON card_group.id=card.group_id
 		LEFT JOIN board_columns from_column ON from_column.id=json_extract(activity.changes,'$.from_column_id')
 		LEFT JOIN board_columns to_column ON to_column.id=json_extract(activity.changes,'$.to_column_id')
-		WHERE activity.action='moved' AND activity.created_at >= $1 AND activity.created_at < $2`
-	args := []any{filters.From, filters.To}
+		WHERE activity.action='moved' AND datetime(activity.created_at) >= datetime($1) AND datetime(activity.created_at) < datetime($2)`
+	args := []any{sqliteTime(filters.From), sqliteTime(filters.To)}
 	add := func(clause string, value any) {
 		args = append(args, value)
 		query += fmt.Sprintf(clause, len(args))
@@ -556,11 +556,11 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		if err != nil {
 			return MovementPage{}, ErrValidation
 		}
-		args = append(args, cursor.CreatedAt, cursor.ID)
-		query += fmt.Sprintf(` AND (activity.created_at,activity.id) < ($%d,$%d)`, len(args)-1, len(args))
+		args = append(args, sqliteTime(cursor.CreatedAt), cursor.ID)
+		query += fmt.Sprintf(` AND (datetime(activity.created_at),activity.id) < (datetime($%d),$%d)`, len(args)-1, len(args))
 	}
 	args = append(args, filters.Limit+1)
-	query += fmt.Sprintf(` ORDER BY activity.created_at DESC,activity.id DESC LIMIT $%d`, len(args))
+	query += fmt.Sprintf(` ORDER BY datetime(activity.created_at) DESC,activity.id DESC LIMIT $%d`, len(args))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -756,6 +756,10 @@ func value(pointer *string) string {
 		return ""
 	}
 	return *pointer
+}
+
+func sqliteTime(value time.Time) string {
+	return value.UTC().Format("2006-01-02 15:04:05.999999999")
 }
 
 type listCursor struct {

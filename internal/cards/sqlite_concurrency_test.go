@@ -3,28 +3,16 @@ package cards
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
-	appdb "github.com/ReanSn0w/justkb/internal/database"
-	"github.com/pressly/goose/v3"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
 func TestConcurrentMovesPreserveOptimisticLock(t *testing.T) {
 	ctx := context.Background()
-	db, err := appdb.Open(ctx, filepath.Join(t.TempDir(), "jkb.sqlite"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if err := goose.SetDialect("sqlite3"); err != nil {
-		t.Fatal(err)
-	}
-	if err := goose.Up(db, "../../migrations"); err != nil {
-		t.Fatal(err)
-	}
+	db := testdb.Open(t).DB
 	user, err := auth.NewService(db).CreateAdmin(ctx, "admin", "Administrator", "test-password-long-enough")
 	if err != nil {
 		t.Fatal(err)

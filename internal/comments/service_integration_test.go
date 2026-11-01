@@ -2,41 +2,34 @@ package comments
 
 import (
 	"context"
-	"database/sql"
-	"os"
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/board"
+	"github.com/ReanSn0w/justkb/internal/cards"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
 func TestCommentLifecycleIntegration(t *testing.T) {
-	url := os.Getenv("JKB_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("JKB_TEST_DATABASE_URL is not set")
-	}
-	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testdb.Open(t).DB
 	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, `TRUNCATE card_activity,api_tokens,web_sessions,attachments,card_tags,cards,group_members,users,user_groups,epics,tags RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatal(err)
-	}
 	user, err := auth.NewService(db).CreateAdmin(ctx, "commenter", "Commenter", "correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var columnID, cardID, epicID string
+	var columnID string
 	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position LIMIT 1`).Scan(&columnID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `INSERT INTO cards(title,column_id,position,created_by) VALUES('Discuss',$1,1000,$2) RETURNING id`, columnID, user.ID).Scan(&cardID); err != nil {
+	card, err := cards.NewService(db).Create(ctx, cards.Actor{UserID: user.ID}, cards.CreateInput{Title: "Discuss", ColumnID: columnID})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `INSERT INTO epics(name,color) VALUES('Discuss project','#00d1b2') RETURNING id`).Scan(&epicID); err != nil {
+	epic, err := board.NewService(db).SaveEpic(ctx, "", "Discuss project", "#00d1b2", nil, false)
+	if err != nil {
 		t.Fatal(err)
 	}
+	cardID, epicID := card.ID, epic.ID
 	service := NewService(db)
 	cardComment, err := service.CreateCard(ctx, cardID, Actor{UserID: user.ID}, "**card** comment")
 	if err != nil || cardComment.Author.DisplayName != "Commenter" {

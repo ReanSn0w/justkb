@@ -8,9 +8,8 @@ import (
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/board"
-	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/maintenance"
-	"github.com/pressly/goose/v3"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
 func TestBackupRestoreIntegration(t *testing.T) {
@@ -73,40 +72,25 @@ func backupFixture(t *testing.T) (context.Context, *Service, string, string, fun
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
-	databasePath := filepath.Join(root, "jkb.sqlite")
-	db, err := appdb.Open(ctx, databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := goose.SetDialect("sqlite3"); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
-	if err := goose.Up(db, "../../migrations"); err != nil {
-		db.Close()
-		t.Fatal(err)
-	}
+	testDatabase := testdb.Open(t)
+	databasePath, db := testDatabase.Path, testDatabase.DB
 	user, err := board.NewService(db).CreateUser(ctx, "backup-user", "Before backup", "", "admin", "test-password-long-enough")
 	if err != nil {
-		db.Close()
 		t.Fatal(err)
 	}
 	storage := filepath.Join(root, "files")
 	if err := os.MkdirAll(storage, 0o750); err != nil {
-		db.Close()
 		t.Fatal(err)
 	}
 	storedFile := filepath.Join(storage, "attachment")
 	if err := os.WriteFile(storedFile, []byte("before backup"), 0o600); err != nil {
-		db.Close()
 		t.Fatal(err)
 	}
 	service, err := NewService(db, databasePath, storage, &maintenance.Gate{})
 	if err != nil {
-		db.Close()
 		t.Fatal(err)
 	}
-	return ctx, service, user.ID, storedFile, func() { _ = db.Close() }
+	return ctx, service, user.ID, storedFile, func() {}
 }
 
 func restoreArchive(t *testing.T, ctx context.Context, service *Service, archivePath string) {

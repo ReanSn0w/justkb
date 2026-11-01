@@ -3,34 +3,23 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
 func TestRESTContractIntegration(t *testing.T) {
-	url := os.Getenv("JKB_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("JKB_TEST_DATABASE_URL is not set")
-	}
-	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	testDatabase := testdb.Open(t)
+	db := testDatabase.DB
 	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, `TRUNCATE card_activity,api_tokens,web_sessions,attachments,card_tags,cards,group_members,users,user_groups,epics,tags RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := auth.NewService(db).CreateAdmin(ctx, "admin", "Admin", "correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +29,7 @@ func TestRESTContractIntegration(t *testing.T) {
 	}
 	handler := New(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), StoragePath: t.TempDir(), Database: db, DB: db,
-		DatabasePath: url, AttachmentMaxSize: 1024, CookieSecure: false,
+		DatabasePath: testDatabase.Path, AttachmentMaxSize: 1024, CookieSecure: false,
 	})
 
 	unauthorized := request(handler, http.MethodGet, "/api/v1/cards", "", nil, "")

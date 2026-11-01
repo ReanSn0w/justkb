@@ -125,3 +125,29 @@ func TestIsBusyRecognizesWriterConflict(t *testing.T) {
 		t.Fatalf("error=%v want SQLITE_BUSY", err)
 	}
 }
+
+func TestDataSurvivesReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "jkb.sqlite")
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE durable(value TEXT NOT NULL); INSERT INTO durable(value) VALUES('persisted')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var value string
+	if err := db.QueryRow(`SELECT value FROM durable`).Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	if value != "persisted" {
+		t.Fatalf("value=%q", value)
+	}
+}
