@@ -18,13 +18,14 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/jkb ./cmd/jkb && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/jkb-admin ./cmd/jkb-admin
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata && \
+RUN apk add --no-cache ca-certificates su-exec tzdata && \
     addgroup -S -g 10001 jkb && adduser -S -D -H -u 10001 -G jkb jkb
 WORKDIR /app
 COPY --from=backend /out/jkb /out/jkb-migrate /out/jkb-admin /usr/local/bin/
 COPY --from=backend /src/migrations ./migrations
+COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /var/lib/jkb/files && chown -R jkb:jkb /var/lib/jkb
-USER jkb
 EXPOSE 8080
 VOLUME ["/var/lib/jkb"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/local/bin/jkb"]

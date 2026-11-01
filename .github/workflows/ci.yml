@@ -90,6 +90,9 @@ jobs:
       - name: Migrate persistent volume
         run: |
           docker volume create jkb-smoke-data
+          docker run --rm --user 0 \
+            --volume jkb-smoke-data:/var/lib/jkb \
+            alpine:3.22 sh -c 'mkdir -p /var/lib/jkb/files && touch /var/lib/jkb/root-owned'
           docker run --rm \
             --env JKB_DATABASE_PATH=/var/lib/jkb/jkb.sqlite \
             --env JKB_STORAGE_PATH=/var/lib/jkb/files \
@@ -110,6 +113,8 @@ jobs:
             sleep 1
           done
           curl --fail http://127.0.0.1:18080/health/ready
+          docker exec jkb-smoke sh -c \
+            'grep -q "^Uid:[[:space:]]*10001" /proc/1/status && su-exec jkb:jkb test -w /var/lib/jkb/root-owned'
           docker restart jkb-smoke
           for attempt in $(seq 1 30); do
             curl --fail --silent http://127.0.0.1:18080/health/ready && break
