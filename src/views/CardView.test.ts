@@ -74,6 +74,7 @@ describe('card details layout', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    expect(wrapper.get('header > .level-item .card-number').text()).toBe('JKB-1')
     expect(wrapper.findAll('attachment-panel-stub')).toHaveLength(1)
     expect(wrapper.find('comment-panel-stub').exists()).toBe(true)
   })

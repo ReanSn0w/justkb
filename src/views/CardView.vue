@@ -88,12 +88,12 @@ function toggleTag(id: string) {
       <template v-else-if="card">
         <header class="level">
           <div class="level-left">
-            <div>
-              <button class="button mb-3" @click="editing ? cancelEdit() : router.push('/')">
-                {{ editing ? '← Карточка' : '← Доска' }}
-              </button>
-              <p class="has-text-grey is-size-7">JKB-{{ card.number }}</p>
-            </div>
+            <button class="button" @click="editing ? cancelEdit() : router.push('/')">
+              {{ editing ? '← Карточка' : '← Доска' }}
+            </button>
+          </div>
+          <div class="level-item">
+            <p class="card-number has-text-grey is-size-7">JKB-{{ card.number }}</p>
           </div>
           <div class="level-right">
             <div v-if="editing" class="buttons">
