@@ -15,11 +15,21 @@ for local HTTP.
 docker compose build
 docker compose up -d db
 docker compose run --rm app /usr/local/bin/jkb-migrate up
-docker compose run --rm app /usr/local/bin/jkb-admin admin "Administrator"
+docker compose run --rm app /usr/local/bin/jkb-admin user add \
+  --role admin --display-name "Administrator" admin
 docker compose up -d app
 ```
 
-The admin command requests the password interactively and never prints it.
+The admin command requests and confirms the password interactively and never
+prints it. The same command can create regular users; `--role` defaults to
+`member`, while `--email` and `--display-name` are optional:
+
+```sh
+docker compose run --rm app /usr/local/bin/jkb-admin user add \
+  --display-name "Ada Lovelace" --email ada@example.test ada
+```
+
+Run `jkb-admin --help` or `jkb-admin user add --help` to inspect the CLI.
 Migrations are intentionally explicit, making deploy and rollback order
 observable. Use `jkb-migrate down` only after checking the migration impact.
 

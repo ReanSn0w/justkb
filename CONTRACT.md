@@ -125,7 +125,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Projects (`epics`) | `GET, POST /epics`; `GET, PATCH /epics/{id}`; `POST /epics/{id}/attachments` | Чтение — все, изменение — admin; вложения — все |
 | Tags | `GET, POST /tags`; `GET, PATCH /tags/{id}` | Чтение — все, измение — admin |
 
-Первый admin создаётся отдельной одноразовой CLI-командой. Сервер не имеет общедоступного setup endpoint.
+Первый admin создаётся после миграций командой `jkb-admin user add --role admin --display-name "Administrator" admin`. Эта же команда создаёт обычных пользователей (`member` по умолчанию); пароль вводится и подтверждается интерактивно. Сервер не имеет общедоступного setup endpoint.
 
 `GET /users/{id}/avatar` возвращает аватар авторизованному участнику. Аватары хранятся локально в `avatars` внутри каталога хранилища; принимаются JPEG, PNG, GIF и WebP размером до 5 МБ.
 
