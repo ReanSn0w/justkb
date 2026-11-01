@@ -67,11 +67,15 @@ async function keyboard(card: Card, direction: -1 | 1) {
         title="Нет колонок"
         detail="Администратор должен создать хотя бы одну колонку."
       />
-      <div v-else class="columns is-multiline is-variable is-4" aria-label="Kanban-доска">
+      <div
+        v-else
+        class="columns is-mobile is-variable is-4 is-flex-wrap-nowrap is-overflow-x-auto"
+        aria-label="Kanban-доска"
+      >
         <div
           v-for="column in board.columns"
           :key="column.id"
-          class="column is-half-tablet is-one-quarter-widescreen"
+          class="column is-10-mobile is-6-tablet is-4-desktop is-3-widescreen is-flex-shrink-0"
         >
           <section class="box" @dragover.prevent @drop="drop(column.id)">
             <header class="level is-mobile mb-4">
