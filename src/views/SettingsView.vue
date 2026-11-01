@@ -10,7 +10,7 @@ type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
 type Tab = DirectoryTab | 'backup'
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
-  groups: 'Группы',
+  groups: 'Команды',
   columns: 'Колонки',
   tags: 'Теги',
   backup: 'Резервные копии',
@@ -80,7 +80,7 @@ async function password(user: User) {
   if (value) await directoryApi.setUserPassword(user.id, value)
 }
 async function membership(user: User) {
-  const value = prompt('UUID групп через запятую', (user.group_ids || []).join(','))
+  const value = prompt('UUID команд через запятую', (user.group_ids || []).join(','))
   if (value !== null)
     await directoryApi.setUserGroups(
       user.id,
@@ -175,7 +175,7 @@ async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardC
                 <button class="button" @click="patchUser(user, { is_active: !user.is_active })">
                   {{ user.is_active ? 'Отключить' : 'Включить' }}
                 </button>
-                <button class="button" @click="membership(user)">Группы</button>
+                <button class="button" @click="membership(user)">Команды</button>
                 <button class="button" @click="password(user)">Пароль</button>
               </div>
             </div>

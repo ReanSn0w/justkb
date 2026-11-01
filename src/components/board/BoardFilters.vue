@@ -51,10 +51,10 @@ function toggleTag(id: string) {
       </div>
       <div class="control is-expanded">
         <div class="select is-fullwidth">
-          <select v-model="board.filters.group_id" aria-label="Группа">
-            <option :value="undefined" disabled>Выберите группу</option>
-            <option value="">Все группы</option>
-            <option value="none">Без группы</option>
+          <select v-model="board.filters.group_id" aria-label="Команда">
+            <option :value="undefined" disabled>Выберите команду</option>
+            <option value="">Все команды</option>
+            <option value="none">Без команды</option>
             <option v-for="group in board.groups" :key="group.id" :value="group.id">
               {{ group.name }}
             </option>

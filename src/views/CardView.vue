@@ -134,10 +134,10 @@ function toggleTag(id: string) {
                   </BaseField>
                 </div>
                 <div class="column is-half">
-                  <BaseField label="Группа">
+                  <BaseField label="Команда">
                     <div class="select is-fullwidth">
                       <select v-model="card.group_id">
-                        <option :value="null">Без группы</option>
+                        <option :value="null">Без команды</option>
                         <option v-for="group in board.groups" :key="group.id" :value="group.id">
                           {{ group.name }}
                         </option>

@@ -13,6 +13,7 @@ describe('board filters', () => {
 
     expect(wrapper.get('[aria-live="polite"]').text()).toBe('Обновляем…')
     expect(wrapper.find('input[type="search"]').exists()).toBe(true)
+    expect(wrapper.get('select[aria-label="Команда"]').text()).toContain('Все команды')
   })
 
   it('reserves space for the refresh indicator while idle', () => {

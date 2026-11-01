@@ -86,5 +86,7 @@ describe('card details layout', () => {
 
     expect(wrapper.findAll('attachment-panel-stub')).toHaveLength(1)
     expect(wrapper.find('comment-panel-stub').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Команда')
+    expect(wrapper.text()).toContain('Без команды')
   })
 })

@@ -45,6 +45,8 @@ describe('card information panel', () => {
     expect(wrapper.text()).toContain('Столбец')
     expect(wrapper.text()).toContain('В работе')
     expect(wrapper.text()).toContain('Запуск')
+    expect(wrapper.text()).toContain('Команда')
+    expect(wrapper.text()).not.toContain('Группа')
     expect(wrapper.text()).toContain('Backend')
     expect(wrapper.text()).toContain('Ada')
     expect(wrapper.text()).toContain('Важно')

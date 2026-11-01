@@ -25,7 +25,7 @@ defineProps<{ card: Card; columnName: string }>()
         </dd>
       </div>
       <div class="mb-4">
-        <dt class="has-text-grey is-size-7 mb-1">Группа</dt>
+        <dt class="has-text-grey is-size-7 mb-1">Команда</dt>
         <dd>
           <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
           <span v-else>Не указана</span>
