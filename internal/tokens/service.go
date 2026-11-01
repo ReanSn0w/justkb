@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -64,25 +64,35 @@ func (s *Service) Create(ctx context.Context, userID, name string, scopes []stri
 	if len(prefix) > 20 {
 		prefix = prefix[:20]
 	}
-	var token Token
-	var scopesJSON []byte
-	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO api_tokens(user_id,name,token_prefix,token_digest,scopes,expires_at)
-		VALUES($1,$2,$3,$4,$5,$6)
-		RETURNING id,name,token_prefix,to_json(scopes),expires_at,last_used_at,revoked_at,created_at`,
-		userID, name, prefix, digest[:], validatedScopes, expiresAt,
-	).Scan(&token.ID, &token.Name, &token.Prefix, &scopesJSON, &token.ExpiresAt, &token.LastUsedAt, &token.RevokedAt, &token.CreatedAt)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Created{}, err
 	}
-	if err := json.Unmarshal(scopesJSON, &token.Scopes); err != nil {
+	defer tx.Rollback()
+	var token Token
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest,expires_at)
+		VALUES($1,$2,$3,$4,$5,$6)
+		RETURNING id,name,token_prefix,expires_at,last_used_at,revoked_at,created_at`,
+		ids.New(), userID, name, prefix, digest[:], expiresAt,
+	).Scan(&token.ID, &token.Name, &token.Prefix, &token.ExpiresAt, &token.LastUsedAt, &token.RevokedAt, &token.CreatedAt)
+	if err != nil {
 		return Created{}, err
 	}
+	for _, scope := range validatedScopes {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO api_token_scopes(token_id,scope) VALUES($1,$2)`, token.ID, scope); err != nil {
+			return Created{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Created{}, err
+	}
+	token.Scopes = validatedScopes
 	return Created{Token: token, Secret: secret}, nil
 }
 
 func (s *Service) List(ctx context.Context, userID string) ([]Token, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name,token_prefix,to_json(scopes),expires_at,last_used_at,revoked_at,created_at FROM api_tokens WHERE user_id=$1 ORDER BY created_at DESC,id`, userID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,name,token_prefix,expires_at,last_used_at,revoked_at,created_at FROM api_tokens WHERE user_id=$1 ORDER BY created_at DESC,id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,11 +100,11 @@ func (s *Service) List(ctx context.Context, userID string) ([]Token, error) {
 	items := make([]Token, 0)
 	for rows.Next() {
 		var item Token
-		var scopesJSON []byte
-		if err := rows.Scan(&item.ID, &item.Name, &item.Prefix, &scopesJSON, &item.ExpiresAt, &item.LastUsedAt, &item.RevokedAt, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Prefix, &item.ExpiresAt, &item.LastUsedAt, &item.RevokedAt, &item.CreatedAt); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(scopesJSON, &item.Scopes); err != nil {
+		item.Scopes, err = s.scopes(ctx, item.ID)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -103,7 +113,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]Token, error) {
 }
 
 func (s *Service) Revoke(ctx context.Context, userID, tokenID string) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=COALESCE(revoked_at,now()),updated_at=now() WHERE id=$1 AND user_id=$2`, tokenID, userID)
+	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND user_id=$2`, tokenID, userID)
 	if err != nil {
 		return err
 	}
@@ -120,20 +130,20 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (auth.Princip
 	digest := sha256.Sum256([]byte(secret))
 	var principal auth.Principal
 	var scopes []string
-	var scopesJSON []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id,u.username,u.display_name,u.email,u.avatar_url,u.role::text,u.is_active,t.id,to_json(t.scopes)
+		SELECT u.id,u.username,u.display_name,u.email,u.avatar_url,u.role,u.is_active,t.id
 		FROM api_tokens t JOIN users u ON u.id=t.user_id
 		WHERE t.token_digest=$1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>$2) AND u.is_active`,
 		digest[:], s.now(),
-	).Scan(&principal.User.ID, &principal.User.Username, &principal.User.DisplayName, &principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive, &principal.TokenID, &scopesJSON)
+	).Scan(&principal.User.ID, &principal.User.Username, &principal.User.DisplayName, &principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive, &principal.TokenID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return auth.Principal{}, ErrInvalidToken
 	}
 	if err != nil {
 		return auth.Principal{}, err
 	}
-	if err := json.Unmarshal(scopesJSON, &scopes); err != nil {
+	scopes, err = s.scopes(ctx, principal.TokenID)
+	if err != nil {
 		return auth.Principal{}, err
 	}
 	principal.Scopes = make(map[string]bool, len(scopes))
@@ -148,8 +158,25 @@ func (s *Service) touch(id string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_, _ = s.db.ExecContext(ctx, `UPDATE api_tokens SET last_used_at=now(),updated_at=now() WHERE id=$1 AND (last_used_at IS NULL OR last_used_at<now()-interval '5 minutes')`, id)
+		_, _ = s.db.ExecContext(ctx, `UPDATE api_tokens SET last_used_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND (last_used_at IS NULL OR last_used_at<datetime(CURRENT_TIMESTAMP,'-5 minutes'))`, id)
 	}()
+}
+
+func (s *Service) scopes(ctx context.Context, tokenID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT scope FROM api_token_scopes WHERE token_id=$1 ORDER BY scope`, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	scopes := make([]string, 0)
+	for rows.Next() {
+		var scope string
+		if err := rows.Scan(&scope); err != nil {
+			return nil, err
+		}
+		scopes = append(scopes, scope)
+	}
+	return scopes, rows.Err()
 }
 
 func validateScopes(scopes []string) ([]string, error) {

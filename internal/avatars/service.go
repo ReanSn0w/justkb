@@ -106,7 +106,7 @@ func (s *Service) Upload(ctx context.Context, userID string, source io.Reader) (
 	}
 
 	avatarURL := fmt.Sprintf("/api/v1/users/%s/avatar?v=%d", userID, time.Now().UnixNano())
-	result, err := s.db.ExecContext(ctx, `UPDATE users SET avatar_url=$2,updated_at=now() WHERE id=$1 AND is_active`, userID, avatarURL)
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET avatar_url=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND is_active`, userID, avatarURL)
 	if err == nil {
 		var affected int64
 		affected, err = result.RowsAffected()
@@ -168,7 +168,7 @@ func (s *Service) Delete(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE users SET avatar_url=NULL,updated_at=now() WHERE id=$1 AND is_active`, userID)
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET avatar_url=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND is_active`, userID)
 	if err != nil {
 		return err
 	}

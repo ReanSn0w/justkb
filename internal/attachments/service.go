@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -130,10 +132,10 @@ func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, origi
 	defer tx.Rollback()
 	var metadata Metadata
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO attachments(card_id,epic_id,original_name,storage_name,media_type,size,created_by)
-		VALUES(NULLIF($1,'')::uuid,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7)
+		INSERT INTO attachments(id,card_id,epic_id,original_name,storage_name,media_type,size,created_by)
+		VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,$5,$6,$7,$8)
 		RETURNING id,card_id,epic_id,original_name,media_type,size,created_by,created_at`,
-		cardID, epicID, filepath.Base(originalName), storageName, mediaType, written, actorUserID,
+		ids.New(), cardID, epicID, filepath.Base(originalName), storageName, mediaType, written, actorUserID,
 	).Scan(&metadata.ID, &metadata.CardID, &metadata.EpicID, &metadata.OriginalName, &metadata.MediaType, &metadata.Size, &metadata.CreatedBy, &metadata.CreatedAt)
 	if err != nil {
 		return Metadata{}, err

@@ -53,7 +53,7 @@ CREATE UNIQUE INDEX board_columns_name_unique_ci ON board_columns (lower(name));
 CREATE TABLE epics (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
+    description TEXT,
     color TEXT NOT NULL,
     is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
