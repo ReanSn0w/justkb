@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { cardsApi, type Attachment } from '../../api'
+import { cardsApi, epicsApi, type Attachment } from '../../api'
 import BaseButton from '../ui/BaseButton.vue'
 import { useToastStore } from '../../stores/toasts'
-const props = defineProps<{ cardId: string; attachments: Attachment[] }>()
+const props = defineProps<{
+  entityId: string
+  entityType: 'card' | 'epic'
+  attachments: Attachment[]
+}>()
 const emit = defineEmits<{ change: [items: Attachment[]] }>()
 const progress = ref(0),
   busy = ref(false),
@@ -22,8 +26,9 @@ async function upload(file?: File) {
   error.value = ''
   progress.value = 0
   try {
-    const item = await cardsApi.upload(
-      props.cardId,
+    const api = props.entityType === 'card' ? cardsApi : epicsApi
+    const item = await api.upload(
+      props.entityId,
       file,
       (loaded, total) => (progress.value = total ? Math.round((loaded / total) * 100) : 0),
     )
@@ -38,11 +43,15 @@ async function upload(file?: File) {
 }
 async function remove(item: Attachment) {
   if (!confirm(`Удалить ${item.original_name}?`)) return
-  await cardsApi.deleteAttachment(item.id)
+  const api = props.entityType === 'card' ? cardsApi : epicsApi
+  await api.deleteAttachment(item.id)
   emit(
     'change',
     props.attachments.filter((x) => x.id !== item.id),
   )
+}
+function attachmentUrl(id: string) {
+  return props.entityType === 'card' ? cardsApi.attachmentUrl(id) : epicsApi.attachmentUrl(id)
 }
 function size(value: number) {
   return value < 1024 * 1024
@@ -79,7 +88,7 @@ function size(value: number) {
         <div class="media-content">
           <div class="content">
             <p>
-              <a :href="cardsApi.attachmentUrl(item.id)">{{ item.original_name }}</a>
+              <a :href="attachmentUrl(item.id)">{{ item.original_name }}</a>
               <br />
               <small
                 >{{ item.media_type }} · {{ size(item.size) }} ·

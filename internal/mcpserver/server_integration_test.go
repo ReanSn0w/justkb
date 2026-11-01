@@ -80,7 +80,7 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 14 {
+	if len(listed.Tools) != 17 {
 		t.Fatalf("tool count=%d", len(listed.Tools))
 	}
 	columns, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_columns", Arguments: map[string]any{}})

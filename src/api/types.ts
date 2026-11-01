@@ -32,6 +32,8 @@ export interface Epic extends Timestamps {
   color: string
   description?: string | null
   is_archived: boolean
+  card_count: number
+  attachments?: Attachment[]
 }
 export interface Tag extends Timestamps {
   id: UUID
@@ -40,7 +42,8 @@ export interface Tag extends Timestamps {
 }
 export interface Attachment {
   id: UUID
-  card_id: UUID
+  card_id?: UUID
+  epic_id?: UUID
   original_name: string
   media_type: string
   size: number

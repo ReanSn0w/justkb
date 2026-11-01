@@ -175,7 +175,8 @@ function toggleTag(id: string) {
           <div class="column">
             <aside class="box">
               <AttachmentPanel
-                :card-id="card.id"
+                :entity-id="card.id"
+                entity-type="card"
                 :attachments="card.attachments || []"
                 @change="card.attachments = $event"
               />

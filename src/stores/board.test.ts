@@ -1,15 +1,15 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cardsApi, directoryApi, type Card } from '../api'
+import { cardsApi, directoryApi, epicsApi, type Card } from '../api'
 import { useBoardStore } from './board'
 vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api')
   return {
     ...actual,
     cardsApi: { ...actual.cardsApi, list: vi.fn(), move: vi.fn(), create: vi.fn() },
+    epicsApi: { ...actual.epicsApi, list: vi.fn() },
     directoryApi: {
       columns: vi.fn(),
-      epics: vi.fn(),
       groups: vi.fn(),
       users: vi.fn(),
       tags: vi.fn(),
@@ -38,7 +38,7 @@ describe('board store', () => {
       items: [{ id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' }],
       next_cursor: null,
     })
-    vi.mocked(directoryApi.epics).mockResolvedValue(empty)
+    vi.mocked(epicsApi.list).mockResolvedValue(empty)
     vi.mocked(directoryApi.groups).mockResolvedValue(empty)
     vi.mocked(directoryApi.users).mockResolvedValue(empty)
     vi.mocked(directoryApi.tags).mockResolvedValue(empty)

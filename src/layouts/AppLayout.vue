@@ -35,6 +35,13 @@ async function logout() {
         <RouterLink
           class="navbar-item"
           active-class="is-active"
+          to="/epics"
+          @click="menuOpen = false"
+          >EPIC</RouterLink
+        >
+        <RouterLink
+          class="navbar-item"
+          active-class="is-active"
           to="/tokens"
           @click="menuOpen = false"
           >API-токены</RouterLink

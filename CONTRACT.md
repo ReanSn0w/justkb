@@ -44,10 +44,10 @@ JKB — одна общая kanban-доска для небольшой кома
 | User | `id`, `username`, `display_name`, `role`, `is_active` | `email`, `avatar_url` |
 | Group | `id`, `name`, `color` | `description` |
 | Column | `id`, `name`, `position` | `wip_limit` |
-| Epic | `id`, `name`, `color`, `is_archived` | `description` |
+| Epic | `id`, `name`, `color`, `is_archived`, `card_count` | `description`, `attachments` |
 | Tag | `id`, `name`, `color` | — |
 | Card | `id`, `number`, `title`, `description`, `column_id`, `position`, `version`, `is_archived` | `epic_id`, `group_id`, `assignee_id`, `due_at` |
-| Attachment | `id`, `card_id`, `original_name`, `media_type`, `size`, `created_by` | — |
+| Attachment | `id`, `original_name`, `media_type`, `size`, `created_by` | `card_id` или `epic_id` |
 | API token | `id`, `user_id`, `name`, `token_prefix`, `scopes` | `expires_at`, `last_used_at`, `revoked_at` |
 | Activity | `id`, `card_id`, `actor_user_id`, `action`, `changes` | `actor_token_id` |
 
@@ -60,6 +60,8 @@ JKB — одна общая kanban-доска для небольшой кома
 - пользователь может состоять в нескольких группах;
 - карточка имеет не более одного EPIC, одной группы и одного исполнителя;
 - карточка может иметь несколько тегов и вложений;
+- EPIC имеет подробное Markdown-описание и может содержать несколько вложений;
+- вложение принадлежит ровно одной карточке или одному EPIC;
 - архивный EPIC остаётся у существующих карточек, но не предлагается для новых;
 - удаление колонки с карточками запрещено до перемещения её карточек.
 
@@ -115,7 +117,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Users | `GET, POST /users`; `GET, PATCH /users/{id}`; `PUT /users/{id}/groups`; `PUT /users/{id}/password` | Чтение — все, изменение — admin |
 | Groups | `GET, POST /groups`; `GET, PATCH /groups/{id}` | Чтение — все, изменение — admin |
 | Columns | `GET, POST /columns`; `PATCH /columns/{id}`; `POST /columns/reorder`; `DELETE /columns/{id}` | Чтение — все, изменение — admin |
-| Epics | `GET, POST /epics`; `GET, PATCH /epics/{id}` | Чтение — все, измение — admin |
+| Epics | `GET, POST /epics`; `GET, PATCH /epics/{id}`; `POST /epics/{id}/attachments` | Чтение — все, изменение — admin; вложения — все |
 | Tags | `GET, POST /tags`; `GET, PATCH /tags/{id}` | Чтение — все, измение — admin |
 
 Первый admin создаётся отдельной одноразовой CLI-командой. Сервер не имеет общедоступного setup endpoint.
@@ -177,6 +179,7 @@ JKB — одна общая kanban-доска для небольшой кома
 | Метод | Путь | Назначение |
 |---|---|---|
 | `POST` | `/cards/{id}/attachments` | `multipart/form-data` с одним полем `file` |
+| `POST` | `/epics/{id}/attachments` | `multipart/form-data` с одним полем `file` |
 | `GET` | `/attachments/{id}` | Скачать файл с проверкой авторизации |
 | `DELETE` | `/attachments/{id}` | Удалить метаданные и файл |
 
@@ -219,6 +222,7 @@ JKB — одна общая kanban-доска для небольшой кома
 |---|---|---|
 | `list_columns` | — | Все колонки по позиции |
 | `list_epics` | `include_archived?` | EPIC |
+| `get_epic` | `epic_id` | EPIC с описанием и количеством задач |
 | `list_groups` | — | Группы |
 | `list_users` | `group_id?`, `include_inactive?` | Пользователи без чувствительных полей |
 | `list_tags` | — | Теги |
@@ -227,6 +231,8 @@ JKB — одна общая kanban-доска для небольшой кома
 | `get_card_activity` | `card_id`, `limit?`, `cursor?` | Журнал карточки |
 
 Все инструменты чтения требуют `cards:read` и помечаются MCP annotation `readOnlyHint: true`.
+
+`create_epic` и `update_epic` требуют `cards:write` и роль `admin` владельца токена.
 
 ### 5.3. Инструменты изменения
 

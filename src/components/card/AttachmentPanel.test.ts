@@ -10,7 +10,7 @@ describe('AttachmentPanel', () => {
   it('rejects an obviously oversized file before upload', async () => {
     const wrapper = mount(AttachmentPanel, {
       global: { plugins: [createPinia()] },
-      props: { cardId: 'c', attachments: [] },
+      props: { entityId: 'c', entityType: 'card', attachments: [] },
     })
     const file = new File(['x'], 'big.bin')
     Object.defineProperty(file, 'size', { value: 30 * 1024 * 1024 })

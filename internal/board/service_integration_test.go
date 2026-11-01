@@ -44,6 +44,10 @@ func TestReferenceDataIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	detail, err := service.GetEpic(ctx, epic.ID)
+	if err != nil || detail.Name != "Platform" || detail.CardCount != 0 {
+		t.Fatalf("epic detail = %#v, err = %v", detail, err)
+	}
 	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true); err != nil {
 		t.Fatal(err)
 	}

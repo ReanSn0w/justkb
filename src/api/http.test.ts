@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { request, setCsrfToken } from './http'
-import { cardsApi } from '.'
+import { cardsApi, epicsApi } from '.'
 
 describe('HTTP API client', () => {
   beforeEach(() => {
@@ -47,5 +47,12 @@ describe('HTTP API client', () => {
       )
     await cardsApi.list({ epic_id: 'none', tag_ids: ['a', 'b'], archived: false })
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/v1/cards?epic_id=none&tag_id=a&tag_id=b')
+  })
+  it('loads a complete EPIC resource', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ id: 'e1' }), { status: 200 }))
+    await epicsApi.get('e1')
+    expect(fetchMock.mock.calls[0]![0]).toBe('/api/v1/epics/e1')
   })
 })

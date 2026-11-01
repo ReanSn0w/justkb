@@ -64,4 +64,19 @@ func TestAttachmentLifecycleIntegration(t *testing.T) {
 	if _, err := service.Open(ctx, metadata.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("open after delete err=%v", err)
 	}
+	var epicID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO epics(name,color) VALUES('Files','#00d1b2') RETURNING id`).Scan(&epicID); err != nil {
+		t.Fatal(err)
+	}
+	epicFile, err := service.UploadEpic(ctx, epicID, user.ID, "brief.txt", bytes.NewBufferString("epic brief"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epicFile.EpicID == nil || *epicFile.EpicID != epicID || epicFile.CardID != nil {
+		t.Fatalf("epic attachment owner=%#v", epicFile)
+	}
+	listed, err := service.ListEpic(ctx, epicID)
+	if err != nil || len(listed) != 1 || listed[0].ID != epicFile.ID {
+		t.Fatalf("epic attachments=%#v err=%v", listed, err)
+	}
 }

@@ -58,13 +58,20 @@ export const directoryApi = {
   reorderColumns: (column_ids: UUID[]) =>
     request<BoardColumn[]>('/columns/reorder', json('POST', { column_ids })),
   deleteColumn: (id: UUID) => request<void>(`/columns/${id}`, { method: 'DELETE' }),
-  epics: (include_archived = false) =>
-    request<ListResult<Epic>>(`/epics?limit=100&include_archived=${include_archived}`),
-  createEpic: (data: unknown) => request<Epic>('/epics', json('POST', data)),
-  updateEpic: (id: UUID, data: unknown) => request<Epic>(`/epics/${id}`, json('PATCH', data)),
   tags: () => request<ListResult<Tag>>('/tags?limit=100'),
   createTag: (data: unknown) => request<Tag>('/tags', json('POST', data)),
   updateTag: (id: UUID, data: unknown) => request<Tag>(`/tags/${id}`, json('PATCH', data)),
+}
+export const epicsApi = {
+  list: (include_archived = false) =>
+    request<ListResult<Epic>>(`/epics?limit=100&include_archived=${include_archived}`),
+  get: (id: UUID) => request<Epic>(`/epics/${id}`),
+  create: (data: unknown) => request<Epic>('/epics', json('POST', data)),
+  update: (id: UUID, data: unknown) => request<Epic>(`/epics/${id}`, json('PATCH', data)),
+  upload: (id: UUID, file: File, progress?: (loaded: number, total: number) => void) =>
+    upload<Attachment>(`/epics/${id}/attachments`, file, progress),
+  deleteAttachment: (id: UUID) => request<void>(`/attachments/${id}`, { method: 'DELETE' }),
+  attachmentUrl: (id: UUID) => `/api/v1/attachments/${encodeURIComponent(id)}`,
 }
 export const cardsApi = {
   list: (filters?: CardFilters) => request<ListResult<Card>>(`/cards${query(filters)}`),

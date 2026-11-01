@@ -25,7 +25,8 @@ var (
 
 type Metadata struct {
 	ID           string    `json:"id"`
-	CardID       string    `json:"card_id"`
+	CardID       *string   `json:"card_id,omitempty"`
+	EpicID       *string   `json:"epic_id,omitempty"`
 	OriginalName string    `json:"original_name"`
 	MediaType    string    `json:"media_type"`
 	Size         int64     `json:"size"`
@@ -60,8 +61,16 @@ func NewService(db *sql.DB, root string, maxSize int64) (*Service, error) {
 }
 
 func (s *Service) Upload(ctx context.Context, cardID, actorUserID, originalName string, source io.Reader) (Metadata, error) {
-	if cardID == "" || actorUserID == "" || strings.TrimSpace(originalName) == "" {
-		return Metadata{}, errors.New("card, actor and filename are required")
+	return s.upload(ctx, cardID, "", actorUserID, originalName, source)
+}
+
+func (s *Service) UploadEpic(ctx context.Context, epicID, actorUserID, originalName string, source io.Reader) (Metadata, error) {
+	return s.upload(ctx, "", epicID, actorUserID, originalName, source)
+}
+
+func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, originalName string, source io.Reader) (Metadata, error) {
+	if (cardID == "") == (epicID == "") || actorUserID == "" || strings.TrimSpace(originalName) == "" {
+		return Metadata{}, errors.New("one owner, actor and filename are required")
 	}
 	temporary, err := os.CreateTemp(s.root, ".upload-*")
 	if err != nil {
@@ -121,11 +130,11 @@ func (s *Service) Upload(ctx context.Context, cardID, actorUserID, originalName 
 	defer tx.Rollback()
 	var metadata Metadata
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO attachments(card_id,original_name,storage_name,media_type,size,created_by)
-		VALUES($1,$2,$3,$4,$5,$6)
-		RETURNING id,card_id,original_name,media_type,size,created_by,created_at`,
-		cardID, filepath.Base(originalName), storageName, mediaType, written, actorUserID,
-	).Scan(&metadata.ID, &metadata.CardID, &metadata.OriginalName, &metadata.MediaType, &metadata.Size, &metadata.CreatedBy, &metadata.CreatedAt)
+		INSERT INTO attachments(card_id,epic_id,original_name,storage_name,media_type,size,created_by)
+		VALUES(NULLIF($1,'')::uuid,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7)
+		RETURNING id,card_id,epic_id,original_name,media_type,size,created_by,created_at`,
+		cardID, epicID, filepath.Base(originalName), storageName, mediaType, written, actorUserID,
+	).Scan(&metadata.ID, &metadata.CardID, &metadata.EpicID, &metadata.OriginalName, &metadata.MediaType, &metadata.Size, &metadata.CreatedBy, &metadata.CreatedAt)
 	if err != nil {
 		return Metadata{}, err
 	}
@@ -138,6 +147,25 @@ func (s *Service) Upload(ctx context.Context, cardID, actorUserID, originalName 
 	}
 	metadata.storageName = storageName
 	return metadata, nil
+}
+
+func (s *Service) ListEpic(ctx context.Context, epicID string) ([]Metadata, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id,card_id,epic_id,original_name,media_type,size,created_by,created_at
+		FROM attachments WHERE epic_id=$1 ORDER BY created_at,id`, epicID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]Metadata, 0)
+	for rows.Next() {
+		var item Metadata
+		if err := rows.Scan(&item.ID, &item.CardID, &item.EpicID, &item.OriginalName, &item.MediaType, &item.Size, &item.CreatedBy, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Service) Open(ctx context.Context, id string) (Download, error) {
@@ -201,8 +229,8 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 
 func (s *Service) metadata(ctx context.Context, id string) (Metadata, error) {
 	var metadata Metadata
-	err := s.db.QueryRowContext(ctx, `SELECT id,card_id,original_name,storage_name,media_type,size,created_by,created_at FROM attachments WHERE id=$1`, id).Scan(
-		&metadata.ID, &metadata.CardID, &metadata.OriginalName, &metadata.storageName, &metadata.MediaType, &metadata.Size, &metadata.CreatedBy, &metadata.CreatedAt,
+	err := s.db.QueryRowContext(ctx, `SELECT id,card_id,epic_id,original_name,storage_name,media_type,size,created_by,created_at FROM attachments WHERE id=$1`, id).Scan(
+		&metadata.ID, &metadata.CardID, &metadata.EpicID, &metadata.OriginalName, &metadata.storageName, &metadata.MediaType, &metadata.Size, &metadata.CreatedBy, &metadata.CreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Metadata{}, ErrNotFound

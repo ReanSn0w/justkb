@@ -1,29 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import {
-  ApiError,
-  directoryApi,
-  type BoardColumn,
-  type Epic,
-  type Group,
-  type Tag,
-  type User,
-} from '../api'
+import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type User } from '../api'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import { useToastStore } from '../stores/toasts'
-type Tab = 'users' | 'groups' | 'columns' | 'epics' | 'tags'
+type Tab = 'users' | 'groups' | 'columns' | 'tags'
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
   groups: 'Группы',
   columns: 'Колонки',
-  epics: 'EPIC',
   tags: 'Теги',
 }
 const users = ref<User[]>([]),
   groups = ref<Group[]>([]),
   columns = ref<BoardColumn[]>([]),
-  epics = ref<Epic[]>([]),
   tags = ref<Tag[]>([]),
   tab = ref<Tab>('users'),
   name = ref(''),
@@ -32,17 +22,15 @@ const users = ref<User[]>([]),
   toasts = useToastStore()
 async function load() {
   try {
-    const [u, g, c, e, t] = await Promise.all([
+    const [u, g, c, t] = await Promise.all([
       directoryApi.users(),
       directoryApi.groups(),
       directoryApi.columns(),
-      directoryApi.epics(true),
       directoryApi.tags(),
     ])
     users.value = u.items
     groups.value = g.items
     columns.value = c.items.sort((a, b) => a.position - b.position)
-    epics.value = e.items
     tags.value = t.items
   } catch (cause) {
     error.value =
@@ -65,7 +53,6 @@ async function create() {
       })
     else if (tab.value === 'groups') await directoryApi.createGroup(data)
     else if (tab.value === 'columns') await directoryApi.createColumn({ name: data.name })
-    else if (tab.value === 'epics') await directoryApi.createEpic(data)
     else await directoryApi.createTag(data)
     name.value = ''
     await load()
@@ -107,7 +94,7 @@ async function moveColumn(index: number, delta: number) {
   await directoryApi.reorderColumns(next.map((x) => x.id))
   await load()
 }
-async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | Epic | Tag) {
+async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | Tag) {
   const value = prompt('Новое название', item.name)
   if (!value) return
   if (kind === 'groups') {
@@ -120,27 +107,10 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | E
   } else if (kind === 'columns') {
     const column = item as BoardColumn
     await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
-  } else if (kind === 'epics') {
-    const epic = item as Epic
-    await directoryApi.updateEpic(epic.id, {
-      name: value,
-      color: epic.color,
-      description: epic.description,
-      is_archived: epic.is_archived,
-    })
   } else {
     const tag = item as Tag
     await directoryApi.updateTag(tag.id, { name: value, color: tag.color })
   }
-  await load()
-}
-async function toggleEpic(item: Epic) {
-  await directoryApi.updateEpic(item.id, {
-    name: item.name,
-    color: item.color,
-    description: item.description,
-    is_archived: !item.is_archived,
-  })
   await load()
 }
 </script>
@@ -162,7 +132,7 @@ async function toggleEpic(item: Epic) {
               <input v-model.trim="name" class="input" required />
             </BaseField>
           </div>
-          <div v-if="['groups', 'epics', 'tags'].includes(tab)" class="column is-one-quarter">
+          <div v-if="['groups', 'tags'].includes(tab)" class="column is-one-quarter">
             <BaseField label="Цвет">
               <input v-model="color" class="input" type="color" />
             </BaseField>
@@ -243,25 +213,6 @@ async function toggleEpic(item: Epic) {
             </div>
           </article>
         </template>
-        <template v-else-if="tab === 'epics'">
-          <article v-for="item in epics" :key="item.id" class="media">
-            <div class="media-content">
-              <span class="tag is-link is-light">
-                {{ item.name }} {{ item.is_archived ? '(архив)' : '' }}
-              </span>
-            </div>
-            <div class="media-right">
-              <div class="buttons are-small">
-                <button class="button is-light" @click="rename('epics', item)">
-                  Переименовать
-                </button>
-                <button class="button is-light" @click="toggleEpic(item)">
-                  {{ item.is_archived ? 'Восстановить' : 'Архивировать' }}
-                </button>
-              </div>
-            </div>
-          </article>
-        </template>
         <template v-else>
           <article v-for="item in tags" :key="item.id" class="media">
             <div class="media-content">
@@ -279,7 +230,6 @@ async function toggleEpic(item: Epic) {
             (tab === 'users' && !users.length) ||
             (tab === 'groups' && !groups.length) ||
             (tab === 'columns' && !columns.length) ||
-            (tab === 'epics' && !epics.length) ||
             (tab === 'tags' && !tags.length)
           "
           class="has-text-grey"

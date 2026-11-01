@@ -4,6 +4,7 @@ import {
   ApiError,
   cardsApi,
   directoryApi,
+  epicsApi,
   type BoardColumn,
   type Card,
   type CardFilters,
@@ -36,7 +37,7 @@ export const useBoardStore = defineStore('board', () => {
   async function loadDirectories() {
     const [c, e, g, u, t] = await Promise.all([
       directoryApi.columns(),
-      directoryApi.epics(),
+      epicsApi.list(),
       directoryApi.groups(),
       directoryApi.users(),
       directoryApi.tags(),

@@ -14,6 +14,8 @@ const routes = [
     component: () => import('./layouts/AppLayout.vue'),
     children: [
       { path: '', name: 'board', component: () => import('./views/BoardView.vue') },
+      { path: 'epics', name: 'epics', component: () => import('./views/EpicsView.vue') },
+      { path: 'epics/:id', name: 'epic', component: () => import('./views/EpicView.vue') },
       { path: 'cards/:id', name: 'card', component: () => import('./views/CardView.vue') },
       {
         path: 'settings',

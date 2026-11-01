@@ -70,6 +70,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.Handle("POST /api/v1/epics", server.admin(http.HandlerFunc(server.createEpic)))
 	mux.Handle("GET /api/v1/epics/{id}", server.member(http.HandlerFunc(server.getEpic)))
 	mux.Handle("PATCH /api/v1/epics/{id}", server.admin(http.HandlerFunc(server.updateEpic)))
+	mux.Handle("POST /api/v1/epics/{id}/attachments", server.member(http.HandlerFunc(server.uploadEpicAttachment)))
 
 	mux.Handle("GET /api/v1/tags", server.member(http.HandlerFunc(server.listTags)))
 	mux.Handle("POST /api/v1/tags", server.admin(http.HandlerFunc(server.createTag)))
@@ -338,18 +339,20 @@ func (a *api) listEpics(w http.ResponseWriter, r *http.Request) {
 	writeList(w, r, items, err)
 }
 func (a *api) getEpic(w http.ResponseWriter, r *http.Request) {
-	items, err := a.board.ListEpics(r.Context(), true)
+	item, err := a.board.GetEpic(r.Context(), r.PathValue("id"))
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
-	for _, item := range items {
-		if item.ID == r.PathValue("id") {
-			writeJSON(w, http.StatusOK, item)
-			return
-		}
+	files, err := a.attachments.ListEpic(r.Context(), item.ID)
+	if err != nil {
+		handleError(w, r, err)
+		return
 	}
-	handleError(w, r, board.ErrNotFound)
+	writeJSON(w, http.StatusOK, struct {
+		board.Epic
+		Attachments []attachments.Metadata `json:"attachments"`
+	}{Epic: item, Attachments: files})
 }
 
 type epicInput struct {
@@ -534,6 +537,12 @@ func (a *api) cardActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) uploadAttachment(w http.ResponseWriter, r *http.Request) {
+	a.uploadFor(w, r, r.PathValue("id"), "")
+}
+func (a *api) uploadEpicAttachment(w http.ResponseWriter, r *http.Request) {
+	a.uploadFor(w, r, "", r.PathValue("id"))
+}
+func (a *api) uploadFor(w http.ResponseWriter, r *http.Request, cardID, epicID string) {
 	r.Body = http.MaxBytesReader(w, r.Body, a.attachmentMax+1<<20)
 	if err := r.ParseMultipartForm(a.attachmentMax); err != nil {
 		handleError(w, r, attachments.ErrTooLarge)
@@ -546,7 +555,12 @@ func (a *api) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	p, _ := PrincipalFromContext(r.Context())
-	item, err := a.attachments.Upload(r.Context(), r.PathValue("id"), p.User.ID, header.Filename, file)
+	var item attachments.Metadata
+	if epicID != "" {
+		item, err = a.attachments.UploadEpic(r.Context(), epicID, p.User.ID, header.Filename, file)
+	} else {
+		item, err = a.attachments.Upload(r.Context(), cardID, p.User.ID, header.Filename, file)
+	}
 	writeCreated(w, r, item, err)
 }
 func (a *api) downloadAttachment(w http.ResponseWriter, r *http.Request) {

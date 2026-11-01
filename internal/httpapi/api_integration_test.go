@@ -100,6 +100,38 @@ func TestRESTContractIntegration(t *testing.T) {
 	if upload.Code != http.StatusCreated {
 		t.Fatalf("upload status=%d body=%s", upload.Code, upload.Body.String())
 	}
+
+	createdEpic := request(handler, http.MethodPost, "/api/v1/epics", `{"name":"REST EPIC","description":"Project brief","color":"#00d1b2"}`, cookies[0], loginPayload.CSRF)
+	if createdEpic.Code != http.StatusCreated {
+		t.Fatalf("create epic status=%d body=%s", createdEpic.Code, createdEpic.Body.String())
+	}
+	var epic struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createdEpic.Body.Bytes(), &epic); err != nil {
+		t.Fatal(err)
+	}
+	body.Reset()
+	writer = multipart.NewWriter(&body)
+	part, err = writer.CreateFormFile("file", "brief.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.WriteString(part, "epic attachment")
+	_ = writer.Close()
+	epicUploadRequest := httptest.NewRequest(http.MethodPost, "/api/v1/epics/"+epic.ID+"/attachments", &body)
+	epicUploadRequest.Header.Set("Content-Type", writer.FormDataContentType())
+	epicUploadRequest.Header.Set("X-CSRF-Token", loginPayload.CSRF)
+	epicUploadRequest.AddCookie(cookies[0])
+	epicUpload := httptest.NewRecorder()
+	handler.ServeHTTP(epicUpload, epicUploadRequest)
+	if epicUpload.Code != http.StatusCreated {
+		t.Fatalf("epic upload status=%d body=%s", epicUpload.Code, epicUpload.Body.String())
+	}
+	detail := request(handler, http.MethodGet, "/api/v1/epics/"+epic.ID, "", cookies[0], "")
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), "brief.txt") {
+		t.Fatalf("epic detail status=%d body=%s", detail.Code, detail.Body.String())
+	}
 }
 
 func request(handler http.Handler, method, path, body string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {

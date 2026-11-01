@@ -67,6 +67,43 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.board.ListEpics(ctx, input.IncludeArchived)
 		return domainResult(items, err)
 	})
+	mcp.AddTool(server, &mcp.Tool{Name: "get_epic", Description: "Get an EPIC project with its description and task count.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		EpicID string `json:"epic_id"`
+	}) (*mcp.CallToolResult, any, error) {
+		if result := requireScope(ctx, "cards:read"); result != nil {
+			return result, nil, nil
+		}
+		item, err := s.board.GetEpic(ctx, input.EpicID)
+		return domainResult(item, err)
+	})
+	type epicInput struct {
+		EpicID      string  `json:"epic_id,omitempty"`
+		Name        string  `json:"name"`
+		Description *string `json:"description,omitempty"`
+		Color       string  `json:"color,omitempty"`
+		IsArchived  bool    `json:"is_archived,omitempty"`
+	}
+	saveEpic := func(ctx context.Context, input epicInput) (*mcp.CallToolResult, any, error) {
+		principal, result := principalWithScope(ctx, "cards:write")
+		if result != nil {
+			return result, nil, nil
+		}
+		if principal.User.Role != "admin" {
+			return errorResult("forbidden", nil), nil, nil
+		}
+		if input.Color == "" {
+			input.Color = "#00d1b2"
+		}
+		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived)
+		return domainResult(item, err)
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create an EPIC project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+		input.EpicID = ""
+		return saveEpic(ctx, input)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update an EPIC project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+		return saveEpic(ctx, input)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil

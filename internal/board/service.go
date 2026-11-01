@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 )
@@ -46,11 +47,14 @@ type Column struct {
 }
 
 type Epic struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	Color       string  `json:"color"`
-	IsArchived  bool    `json:"is_archived"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	Color       string    `json:"color"`
+	IsArchived  bool      `json:"is_archived"`
+	CardCount   int       `json:"card_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Tag struct {
@@ -303,7 +307,11 @@ func (s *Service) DeleteColumn(ctx context.Context, id string) error {
 }
 
 func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, description, color, is_archived FROM epics WHERE $1 OR NOT is_archived ORDER BY is_archived, lower(name), id`, includeArchived)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived)
+		FROM epics e WHERE $1 OR NOT e.is_archived
+		ORDER BY e.is_archived,lower(e.name),e.id`, includeArchived)
 	if err != nil {
 		return nil, err
 	}
@@ -311,12 +319,27 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 	items := make([]Epic, 0)
 	for rows.Next() {
 		var item Epic
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.CreatedAt, &item.UpdatedAt, &item.CardCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
+	var item Epic
+	err := s.db.QueryRowContext(ctx, `
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived)
+		FROM epics e WHERE e.id=$1`, id).Scan(
+		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived,
+		&item.CreatedAt, &item.UpdatedAt, &item.CardCount,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Epic{}, ErrNotFound
+	}
+	return item, err
 }
 
 func (s *Service) SaveEpic(ctx context.Context, id, name, color string, description *string, archived bool) (Epic, error) {
@@ -326,9 +349,9 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 	var epic Epic
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO epics (name, description, color, is_archived) VALUES ($1,$2,$3,$4) RETURNING id,name,description,color,is_archived`, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO epics (name, description, color, is_archived) VALUES ($1,$2,$3,$4) RETURNING id,name,description,color,is_archived,created_at,updated_at`, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,updated_at=now() WHERE id=$1 RETURNING id,name,description,color,is_archived`, id, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived)
+		err = s.db.QueryRowContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,updated_at=now() WHERE id=$1 RETURNING id,name,description,color,is_archived,created_at,updated_at`, id, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Epic{}, ErrNotFound
