@@ -240,6 +240,7 @@ JKB — одна общая kanban-доска для небольшой кома
 
 | Tool | Аргументы | Результат |
 |---|---|---|
+| `get_current_user` | — | Владелец токена, его группы, роль, ID токена и scopes |
 | `list_columns` | — | Все колонки по позиции |
 | `list_epics` | `include_archived?` | Проекты |
 | `get_epic` | `epic_id` | Проект с описанием и количеством задач |
@@ -251,7 +252,12 @@ JKB — одна общая kanban-доска для небольшой кома
 | `get_card_activity` | `card_id`, `limit?`, `cursor?` | Журнал карточки |
 | `list_comments` | Ровно одно из `card_id`, `project_id` | Комментарии карточки или проекта |
 
-Все инструменты чтения требуют `cards:read` и помечаются MCP annotation `readOnlyHint: true`.
+`get_current_user` доступен любому валидному токену. Остальные инструменты чтения требуют
+`cards:read`; все они помечаются MCP annotation `readOnlyHint: true`.
+
+Перед выбором задачи агент вызывает `get_current_user`. Для поиска своих задач можно передать
+`assignee_id="me"` в `list_cards`. Перед началом работы над карточкой или проектом агент вызывает
+`list_comments`, так как обсуждение может содержать актуальные требования и решения.
 
 `add_comment` принимает ровно одно из `card_id`, `project_id`, а также `body`, и требует `cards:write`.
 

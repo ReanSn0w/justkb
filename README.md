@@ -165,6 +165,8 @@ Authorization: Bearer jkb_pat_…
 Веб-интерфейс и REST API используют cookie-сессию и CSRF-защиту. Персональные
 API-токены используются MCP endpoint. Контракт сущностей, REST endpoints, ролей
 и ошибок находится в [CONTRACT.md](CONTRACT.md).
+Агент может определить владельца токена и его группы через `get_current_user`, а также
+читать обсуждения карточек и проектов через `list_comments`.
 
 ## Конфигурация
 

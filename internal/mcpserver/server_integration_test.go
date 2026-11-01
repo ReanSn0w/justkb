@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,6 +46,13 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var groupID string
+	if err := db.QueryRowContext(ctx, `INSERT INTO user_groups(name,color) VALUES('Backend','#00d1b2') RETURNING id`).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO group_members(group_id,user_id) VALUES($1,$2)`, groupID, user.ID); err != nil {
+		t.Fatal(err)
+	}
 	created, err := tokens.NewService(db).Create(ctx, user.ID, "mcp test", []string{"cards:read", "cards:write"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +88,16 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 19 {
+	if len(listed.Tools) != 20 {
 		t.Fatalf("tool count=%d", len(listed.Tools))
+	}
+	currentUser, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_current_user", Arguments: map[string]any{}})
+	if err != nil || currentUser.IsError {
+		t.Fatalf("get_current_user result=%#v err=%v", currentUser, err)
+	}
+	currentUserJSON, err := json.Marshal(currentUser.StructuredContent)
+	if err != nil || !strings.Contains(string(currentUserJSON), user.ID) || !strings.Contains(string(currentUserJSON), groupID) || !strings.Contains(string(currentUserJSON), created.ID) {
+		t.Fatalf("get_current_user content=%s err=%v", currentUserJSON, err)
 	}
 	columns, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_columns", Arguments: map[string]any{}})
 	if err != nil || columns.IsError {
@@ -94,6 +110,18 @@ func TestMCPIntegration(t *testing.T) {
 	var cardID string
 	if err := db.QueryRowContext(ctx, `SELECT id FROM cards WHERE title='MCP card'`).Scan(&cardID); err != nil {
 		t.Fatal(err)
+	}
+	addedComment, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "add_comment", Arguments: map[string]any{"card_id": cardID, "body": "Use the discussion requirement"}})
+	if err != nil || addedComment.IsError {
+		t.Fatalf("add_comment result=%#v err=%v", addedComment, err)
+	}
+	listedComments, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_comments", Arguments: map[string]any{"card_id": cardID}})
+	if err != nil || listedComments.IsError {
+		t.Fatalf("list_comments result=%#v err=%v", listedComments, err)
+	}
+	commentsJSON, err := json.Marshal(listedComments.StructuredContent)
+	if err != nil || !strings.Contains(string(commentsJSON), "Use the discussion requirement") {
+		t.Fatalf("list_comments content=%s err=%v", commentsJSON, err)
 	}
 	conflict, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "update_card", Arguments: map[string]any{"card_id": cardID, "expected_version": 99, "title": "Conflict"}})
 	if err != nil || !conflict.IsError {

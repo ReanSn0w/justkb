@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	internalAuth "github.com/ReanSn0w/justkb/internal/auth"
@@ -19,6 +20,7 @@ import (
 )
 
 type services struct {
+	auth     *internalAuth.Service
 	board    *board.Service
 	cards    *cards.Service
 	comments *comments.Service
@@ -26,9 +28,9 @@ type services struct {
 }
 
 func NewHandler(db *sql.DB) http.Handler {
-	services := &services{board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
+	services := &services{auth: internalAuth.NewService(db), board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "jkb", Version: "0.1.0"}, &mcp.ServerOptions{
-		Instructions:              "Manage the shared JKB kanban board. Read a card before mutating it and pass its current version as expected_version.",
+		Instructions:              "Manage the shared JKB kanban board. Call get_current_user before choosing assigned work. Read a card before mutating it and pass its current version as expected_version. Before starting work on a card or project, read its comments with list_comments because discussion may contain requirements not present in the description.",
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
 	})
 	services.addTools(server)
@@ -52,6 +54,43 @@ func NewHandler(db *sql.DB) http.Handler {
 func (s *services) addTools(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(false)}
 	closedWorld := &mcp.ToolAnnotations{OpenWorldHint: boolPointer(false)}
+
+	type currentUserInfo struct {
+		User        internalAuth.User `json:"user"`
+		Groups      []board.Group     `json:"groups"`
+		TokenID     string            `json:"token_id"`
+		TokenScopes []string          `json:"token_scopes"`
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "get_current_user", Description: "Get the owner of the current API token, their groups, role, and token scopes. Use the user ID with assignee filters; list_cards also accepts assignee_id='me'.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		principal, result := principalFromContext(ctx)
+		if result != nil {
+			return result, nil, nil
+		}
+		user, err := s.auth.UserByID(ctx, principal.User.ID)
+		if err != nil {
+			return domainResult(nil, err)
+		}
+		groupIDs := make(map[string]bool, len(user.GroupIDs))
+		for _, id := range user.GroupIDs {
+			groupIDs[id] = true
+		}
+		allGroups, err := s.board.ListGroups(ctx)
+		if err != nil {
+			return domainResult(nil, err)
+		}
+		groups := make([]board.Group, 0, len(user.GroupIDs))
+		for _, group := range allGroups {
+			if groupIDs[group.ID] {
+				groups = append(groups, group)
+			}
+		}
+		scopes := make([]string, 0, len(principal.Scopes))
+		for scope := range principal.Scopes {
+			scopes = append(scopes, scope)
+		}
+		sort.Strings(scopes)
+		return domainResult(currentUserInfo{User: user, Groups: groups, TokenID: principal.TokenID, TokenScopes: scopes}, nil)
+	})
 
 	mcp.AddTool(server, &mcp.Tool{Name: "list_columns", Description: "List kanban columns in board order.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
@@ -180,7 +219,7 @@ func (s *services) addTools(server *mcp.Server) {
 		CardID    string `json:"card_id,omitempty"`
 		ProjectID string `json:"project_id,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "list_comments", Description: "List comments for one card or project.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input commentTarget) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "list_comments", Description: "List the discussion for one card or project. Read it before starting work because comments may contain current requirements and decisions.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input commentTarget) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
@@ -303,6 +342,17 @@ func (s *services) addTools(server *mcp.Server) {
 }
 
 func principalWithScope(ctx context.Context, scope string) (internalAuth.Principal, *mcp.CallToolResult) {
+	principal, result := principalFromContext(ctx)
+	if result != nil {
+		return internalAuth.Principal{}, result
+	}
+	if !principal.Scopes[scope] {
+		return internalAuth.Principal{}, errorResult("insufficient_scope", map[string]any{"required_scope": scope})
+	}
+	return principal, nil
+}
+
+func principalFromContext(ctx context.Context) (internalAuth.Principal, *mcp.CallToolResult) {
 	info := mcpAuth.TokenInfoFromContext(ctx)
 	if info == nil {
 		return internalAuth.Principal{}, errorResult("unauthenticated", nil)
@@ -310,9 +360,6 @@ func principalWithScope(ctx context.Context, scope string) (internalAuth.Princip
 	principal, ok := info.Extra["principal"].(internalAuth.Principal)
 	if !ok {
 		return internalAuth.Principal{}, errorResult("unauthenticated", nil)
-	}
-	if !principal.Scopes[scope] {
-		return internalAuth.Principal{}, errorResult("insufficient_scope", map[string]any{"required_scope": scope})
 	}
 	return principal, nil
 }
