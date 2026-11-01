@@ -17,6 +17,7 @@ describe('automated accessibility', () => {
     })
     expect(wrapper.get('h1').text()).toBe('JKB')
     expect(wrapper.get('.subtitle').text()).toBe('Канбан-доска проекта')
+    expect(wrapper.get('form h2').text()).toBe('Вход')
     expect(wrapper.get('.hero').classes()).not.toContain('is-light')
     expect(
       result.violations.filter((v) => ['serious', 'critical'].includes(v.impact || '')),
