@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -72,12 +73,24 @@ func TestCardLifecycleIntegration(t *testing.T) {
 	if err != nil || moved.ColumnID != secondColumn || moved.Version != 3 {
 		t.Fatalf("moved=%#v err=%v", moved, err)
 	}
-	archived, err := service.SetArchived(ctx, actor, card.ID, moved.Version, true)
+	movedAgain, err := service.Move(ctx, actor, card.ID, MoveInput{ExpectedVersion: moved.Version, TargetColumnID: firstColumn})
+	if err != nil || movedAgain.ColumnID != firstColumn || movedAgain.Version != 4 {
+		t.Fatalf("moved again=%#v err=%v", movedAgain, err)
+	}
+	movements, err := service.ListMovements(ctx, MovementFilters{From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), ActorUserID: user.ID, Limit: 1})
+	if err != nil || len(movements.Items) != 1 || movements.NextCursor == "" || movements.Items[0].CardTitle != "Fix secure login" || movements.Items[0].Actor.DisplayName != "Admin" {
+		t.Fatalf("movements=%#v err=%v", movements, err)
+	}
+	nextMovements, err := service.ListMovements(ctx, MovementFilters{From: movements.PeriodFrom, To: movements.PeriodTo, ActorUserID: user.ID, Limit: 1, Cursor: movements.NextCursor})
+	if err != nil || len(nextMovements.Items) != 1 || nextMovements.Items[0].ID == movements.Items[0].ID {
+		t.Fatalf("next movements=%#v err=%v", nextMovements, err)
+	}
+	archived, err := service.SetArchived(ctx, actor, card.ID, movedAgain.Version, true)
 	if err != nil || !archived.IsArchived {
 		t.Fatalf("archived=%#v err=%v", archived, err)
 	}
 	activity, err := service.Activity(ctx, card.ID, 20)
-	if err != nil || len(activity) != 4 {
+	if err != nil || len(activity) != 5 {
 		t.Fatalf("activity=%#v err=%v", activity, err)
 	}
 }

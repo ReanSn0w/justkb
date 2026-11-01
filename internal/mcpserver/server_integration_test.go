@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/tokens"
@@ -88,7 +89,7 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 20 {
+	if len(listed.Tools) != 21 {
 		t.Fatalf("tool count=%d", len(listed.Tools))
 	}
 	currentUser, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_current_user", Arguments: map[string]any{}})
@@ -110,6 +111,25 @@ func TestMCPIntegration(t *testing.T) {
 	var cardID string
 	if err := db.QueryRowContext(ctx, `SELECT id FROM cards WHERE title='MCP card'`).Scan(&cardID); err != nil {
 		t.Fatal(err)
+	}
+	var secondColumnID string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position OFFSET 1 LIMIT 1`).Scan(&secondColumnID); err != nil {
+		t.Fatal(err)
+	}
+	movedCard, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "move_card", Arguments: map[string]any{"card_id": cardID, "expected_version": 1, "target_column_id": secondColumnID}})
+	if err != nil || movedCard.IsError {
+		t.Fatalf("move_card result=%#v err=%v", movedCard, err)
+	}
+	listedMovements, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_card_movements", Arguments: map[string]any{
+		"from": time.Now().Add(-time.Hour).Format(time.RFC3339),
+		"to":   time.Now().Add(time.Hour).Format(time.RFC3339),
+	}})
+	if err != nil || listedMovements.IsError {
+		t.Fatalf("list_card_movements result=%#v err=%v", listedMovements, err)
+	}
+	movementsJSON, err := json.Marshal(listedMovements.StructuredContent)
+	if err != nil || !strings.Contains(string(movementsJSON), "MCP card") || !strings.Contains(string(movementsJSON), "Admin") || !strings.Contains(string(movementsJSON), secondColumnID) {
+		t.Fatalf("list_card_movements content=%s err=%v", movementsJSON, err)
 	}
 	addedComment, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "add_comment", Arguments: map[string]any{"card_id": cardID, "body": "Use the discussion requirement"}})
 	if err != nil || addedComment.IsError {

@@ -215,6 +215,39 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.cards.Activity(ctx, input.CardID, input.Limit)
 		return domainResult(items, err)
 	})
+	type listMovementsInput struct {
+		From        string `json:"from,omitempty"`
+		To          string `json:"to,omitempty"`
+		ActorUserID string `json:"actor_user_id,omitempty"`
+		AssigneeID  string `json:"assignee_id,omitempty"`
+		ProjectID   string `json:"project_id,omitempty"`
+		GroupID     string `json:"group_id,omitempty"`
+		CardID      string `json:"card_id,omitempty"`
+		Limit       int    `json:"limit,omitempty"`
+		Cursor      string `json:"cursor,omitempty"`
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "list_card_movements", Description: "List card movements across the whole board for a time period. from/to use RFC3339; when omitted the period is the previous 24 hours. Omit user filters for an all-user report. actor_user_id filters who performed the move; assignee_id filters the card's current assignee. Both accept 'me'. Results include card titles, column names, actor, current assignee, project, and group.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input listMovementsInput) (*mcp.CallToolResult, any, error) {
+		principal, result := principalWithScope(ctx, "cards:read")
+		if result != nil {
+			return result, nil, nil
+		}
+		from, to, err := movementPeriod(input.From, input.To, time.Now().UTC())
+		if err != nil {
+			return errorResult("validation_failed", map[string]any{"fields": []string{"from", "to"}, "format": time.RFC3339}), nil, nil
+		}
+		if input.ActorUserID == "me" {
+			input.ActorUserID = principal.User.ID
+		}
+		if input.AssigneeID == "me" {
+			input.AssigneeID = principal.User.ID
+		}
+		page, err := s.cards.ListMovements(ctx, cards.MovementFilters{
+			From: from, To: to, ActorUserID: input.ActorUserID, AssigneeID: input.AssigneeID,
+			EpicID: input.ProjectID, GroupID: input.GroupID, CardID: input.CardID,
+			Limit: input.Limit, Cursor: input.Cursor,
+		})
+		return domainResult(page, err)
+	})
 	type commentTarget struct {
 		CardID    string `json:"card_id,omitempty"`
 		ProjectID string `json:"project_id,omitempty"`
@@ -395,3 +428,25 @@ func errorResult(code string, details map[string]any) *mcp.CallToolResult {
 }
 
 func boolPointer(value bool) *bool { return &value }
+
+func movementPeriod(fromValue, toValue string, now time.Time) (time.Time, time.Time, error) {
+	to := now
+	var err error
+	if toValue != "" {
+		to, err = time.Parse(time.RFC3339, toValue)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	}
+	from := to.Add(-24 * time.Hour)
+	if fromValue != "" {
+		from, err = time.Parse(time.RFC3339, fromValue)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	}
+	if !from.Before(to) {
+		return time.Time{}, time.Time{}, cards.ErrValidation
+	}
+	return from, to, nil
+}

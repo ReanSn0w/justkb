@@ -84,6 +84,55 @@ type Activity struct {
 	CreatedAt    time.Time      `json:"created_at"`
 }
 
+type MovementColumn struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type MovementActor struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
+type MovementToken struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type Movement struct {
+	ID              string         `json:"id"`
+	CardID          string         `json:"card_id"`
+	CardNumber      int64          `json:"card_number"`
+	CardTitle       string         `json:"card_title"`
+	FromColumn      MovementColumn `json:"from_column"`
+	ToColumn        MovementColumn `json:"to_column"`
+	Actor           MovementActor  `json:"actor"`
+	ActorToken      *MovementToken `json:"actor_token,omitempty"`
+	CurrentAssignee *CardAssignee  `json:"current_assignee,omitempty"`
+	Project         *CardEpic      `json:"project,omitempty"`
+	Group           *CardGroup     `json:"group,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+type MovementFilters struct {
+	From        time.Time
+	To          time.Time
+	ActorUserID string
+	AssigneeID  string
+	EpicID      string
+	GroupID     string
+	CardID      string
+	Limit       int
+	Cursor      string
+}
+
+type MovementPage struct {
+	PeriodFrom time.Time  `json:"period_from"`
+	PeriodTo   time.Time  `json:"period_to"`
+	Items      []Movement `json:"items"`
+	NextCursor string     `json:"next_cursor,omitempty"`
+}
+
 type Actor struct {
 	UserID  string
 	TokenID string
@@ -451,6 +500,118 @@ func (s *Service) Activity(ctx context.Context, cardID string, limit int) ([]Act
 	return items, rows.Err()
 }
 
+func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (MovementPage, error) {
+	if filters.From.IsZero() || filters.To.IsZero() || !filters.From.Before(filters.To) {
+		return MovementPage{}, ErrValidation
+	}
+	if filters.Limit <= 0 {
+		filters.Limit = 100
+	}
+	if filters.Limit > 500 {
+		return MovementPage{}, ErrValidation
+	}
+	query := `
+		SELECT activity.id,activity.card_id,card.number,card.title,
+			from_column.id,from_column.name,to_column.id,to_column.name,
+			actor.id,actor.display_name,activity.actor_token_id,actor_token.name,
+			assignee.id,assignee.display_name,assignee.avatar_url,
+			project.id,project.name,project.color,
+			card_group.id,card_group.name,activity.created_at
+		FROM card_activity activity
+		JOIN cards card ON card.id=activity.card_id
+		JOIN users actor ON actor.id=activity.actor_user_id
+		LEFT JOIN api_tokens actor_token ON actor_token.id=activity.actor_token_id
+		LEFT JOIN users assignee ON assignee.id=card.assignee_id
+		LEFT JOIN epics project ON project.id=card.epic_id
+		LEFT JOIN user_groups card_group ON card_group.id=card.group_id
+		LEFT JOIN board_columns from_column ON from_column.id=(activity.changes->>'from_column_id')::uuid
+		LEFT JOIN board_columns to_column ON to_column.id=(activity.changes->>'to_column_id')::uuid
+		WHERE activity.action='moved' AND activity.created_at >= $1 AND activity.created_at < $2`
+	args := []any{filters.From, filters.To}
+	add := func(clause string, value any) {
+		args = append(args, value)
+		query += fmt.Sprintf(clause, len(args))
+	}
+	if filters.ActorUserID != "" {
+		add(` AND activity.actor_user_id=$%d`, filters.ActorUserID)
+	}
+	if filters.AssigneeID != "" {
+		add(` AND card.assignee_id=$%d`, filters.AssigneeID)
+	}
+	if filters.EpicID != "" {
+		add(` AND card.epic_id=$%d`, filters.EpicID)
+	}
+	if filters.GroupID != "" {
+		add(` AND card.group_id=$%d`, filters.GroupID)
+	}
+	if filters.CardID != "" {
+		add(` AND card.id=$%d`, filters.CardID)
+	}
+	if filters.Cursor != "" {
+		cursor, err := decodeMovementCursor(filters.Cursor)
+		if err != nil {
+			return MovementPage{}, ErrValidation
+		}
+		args = append(args, cursor.CreatedAt, cursor.ID)
+		query += fmt.Sprintf(` AND (activity.created_at,activity.id) < ($%d,$%d::uuid)`, len(args)-1, len(args))
+	}
+	args = append(args, filters.Limit+1)
+	query += fmt.Sprintf(` ORDER BY activity.created_at DESC,activity.id DESC LIMIT $%d`, len(args))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return MovementPage{}, err
+	}
+	defer rows.Close()
+	items := make([]Movement, 0, filters.Limit+1)
+	for rows.Next() {
+		var item Movement
+		var fromID, fromName, toID, toName sql.NullString
+		var tokenID, tokenName sql.NullString
+		var assigneeID, assigneeName, assigneeAvatar sql.NullString
+		var projectID, projectName, projectColor sql.NullString
+		var groupID, groupName sql.NullString
+		if err := rows.Scan(
+			&item.ID, &item.CardID, &item.CardNumber, &item.CardTitle,
+			&fromID, &fromName, &toID, &toName,
+			&item.Actor.ID, &item.Actor.DisplayName, &tokenID, &tokenName,
+			&assigneeID, &assigneeName, &assigneeAvatar,
+			&projectID, &projectName, &projectColor,
+			&groupID, &groupName, &item.CreatedAt,
+		); err != nil {
+			return MovementPage{}, err
+		}
+		item.FromColumn = MovementColumn{ID: fromID.String, Name: fromName.String}
+		item.ToColumn = MovementColumn{ID: toID.String, Name: toName.String}
+		if tokenID.Valid {
+			item.ActorToken = &MovementToken{ID: tokenID.String, Name: tokenName.String}
+		}
+		if assigneeID.Valid {
+			item.CurrentAssignee = &CardAssignee{ID: assigneeID.String, DisplayName: assigneeName.String}
+			if assigneeAvatar.Valid {
+				item.CurrentAssignee.AvatarURL = &assigneeAvatar.String
+			}
+		}
+		if projectID.Valid {
+			item.Project = &CardEpic{ID: projectID.String, Name: projectName.String, Color: projectColor.String}
+		}
+		if groupID.Valid {
+			item.Group = &CardGroup{ID: groupID.String, Name: groupName.String}
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return MovementPage{}, err
+	}
+	page := MovementPage{PeriodFrom: filters.From, PeriodTo: filters.To, Items: items}
+	if len(items) > filters.Limit {
+		last := items[filters.Limit-1]
+		page.Items = items[:filters.Limit]
+		page.NextCursor = encodeMovementCursor(movementCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+	return page, nil
+}
+
 const cardSelect = `
 	SELECT c.id,c.number,c.title,c.description,c.column_id,c.epic_id,c.group_id,c.assignee_id,c.position::text,c.due_at,c.version,c.is_archived,c.created_by,c.created_at,c.updated_at,
 	COALESCE((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY lower(t.name),t.id) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'::json),
@@ -599,6 +760,11 @@ type listCursor struct {
 	ID             string `json:"i"`
 }
 
+type movementCursor struct {
+	CreatedAt time.Time `json:"t"`
+	ID        string    `json:"i"`
+}
+
 func encodeCursor(cursor listCursor) string {
 	raw, _ := json.Marshal(cursor)
 	return base64.RawURLEncoding.EncodeToString(raw)
@@ -613,6 +779,24 @@ func decodeCursor(value string) (listCursor, error) {
 	err = json.Unmarshal(raw, &cursor)
 	if err != nil || cursor.ID == "" || cursor.Position == "" {
 		return listCursor{}, ErrValidation
+	}
+	return cursor, nil
+}
+
+func encodeMovementCursor(cursor movementCursor) string {
+	raw, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeMovementCursor(value string) (movementCursor, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return movementCursor{}, err
+	}
+	var cursor movementCursor
+	err = json.Unmarshal(raw, &cursor)
+	if err != nil || cursor.ID == "" || cursor.CreatedAt.IsZero() {
+		return movementCursor{}, ErrValidation
 	}
 	return cursor, nil
 }
