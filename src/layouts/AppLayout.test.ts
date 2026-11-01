@@ -33,6 +33,9 @@ describe('application navigation', () => {
     })
 
     expect(wrapper.get('.navbar').classes()).not.toContain('is-light')
+    expect(
+      wrapper.findAll('.navbar-start .navbar-item').every((item) => item.classes('is-tab')),
+    ).toBe(true)
     expect(wrapper.get('.navbar-start').text()).toContain('Доска')
     expect(wrapper.get('.navbar-start').text()).toContain('Проекты')
     expect(wrapper.get('.navbar-start').text()).not.toContain('Настройки')

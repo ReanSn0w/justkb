@@ -46,10 +46,14 @@ async function logout() {
     </div>
     <div :class="['navbar-menu', { 'is-active': menuOpen }]">
       <div class="navbar-start">
-        <RouterLink class="navbar-item" active-class="is-active" to="/" @click="closeMenus"
+        <RouterLink class="navbar-item is-tab" active-class="is-active" to="/" @click="closeMenus"
           >Доска</RouterLink
         >
-        <RouterLink class="navbar-item" active-class="is-active" to="/projects" @click="closeMenus"
+        <RouterLink
+          class="navbar-item is-tab"
+          active-class="is-active"
+          to="/projects"
+          @click="closeMenus"
           >Проекты</RouterLink
         >
       </div>
