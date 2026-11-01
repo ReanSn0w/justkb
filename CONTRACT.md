@@ -131,7 +131,7 @@ JKB — одна общая kanban-доска для небольшой кома
 
 `GET /users/{id}/avatar` возвращает аватар авторизованному участнику. Аватары хранятся локально в `avatars` внутри каталога хранилища; принимаются JPEG, PNG, GIF и WebP размером до 5 МБ.
 
-`POST /admin/backups` возвращает `tar.gz` с manifest, data-only дампом PostgreSQL и локальными файлами. `POST /admin/backups/restore` принимает этот архив в `multipart/form-data` (`file`, `confirmation=RESTORE`) и заменяет текущие данные. Restore разрешён только при совпадении версии схемы. Операции выполняются под maintenance-lock; перед restore сервис создаёт внутренний rollback-снимок текущей базы и сохраняет прежний каталог файлов до успешного завершения.
+`POST /admin/backups` возвращает `tar.gz` с manifest, согласованным online snapshot SQLite и локальными файлами. `POST /admin/backups/restore` принимает этот архив в `multipart/form-data` (`file`, `confirmation=RESTORE`) и заменяет текущие данные. Restore разрешён только при совпадении версии схемы. Операции выполняются под maintenance-lock; перед restore сервис валидирует SQLite-файл, создаёт внутренний rollback-снимок текущей базы и сохраняет прежний каталог файлов до успешного завершения. PostgreSQL-архивы прежнего формата отклоняются.
 
 ### 4.4. Карточки
 
