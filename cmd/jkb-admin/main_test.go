@@ -55,3 +55,15 @@ func TestParseUserPassword(t *testing.T) {
 		}
 	}
 }
+
+func TestParseUsernameCommands(t *testing.T) {
+	for _, command := range []string{"show", "enable", "disable"} {
+		username, err := parseUsernameCommand(command, []string{"ada"}, io.Discard)
+		if err != nil || username != "ada" {
+			t.Fatalf("command=%s username=%q err=%v", command, username, err)
+		}
+		if _, err := parseUsernameCommand(command, nil, io.Discard); err == nil {
+			t.Fatalf("expected missing username error for %s", command)
+		}
+	}
+}

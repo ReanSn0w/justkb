@@ -812,6 +812,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
 	case errors.Is(err, board.ErrColumnNotEmpty):
 		status, code, message = http.StatusConflict, "column_not_empty", "Column contains cards"
+	case errors.Is(err, board.ErrLastAdmin):
+		status, code, message = http.StatusConflict, "last_admin_required", "The last active administrator cannot be disabled or demoted"
 	case errors.Is(err, attachments.ErrTooLarge), errors.Is(err, avatars.ErrTooLarge):
 		status, code, message = http.StatusRequestEntityTooLarge, "attachment_too_large", "Attachment is too large"
 	case errors.Is(err, backups.ErrInvalidArchive):

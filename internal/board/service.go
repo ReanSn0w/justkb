@@ -17,6 +17,7 @@ var (
 	ErrNotFound       = errors.New("not found")
 	ErrValidation     = errors.New("validation failed")
 	ErrColumnNotEmpty = errors.New("column is not empty")
+	ErrLastAdmin      = errors.New("cannot disable or demote the last active admin")
 )
 
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
@@ -125,12 +126,68 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 	if strings.TrimSpace(email) != "" {
 		emailValue = strings.TrimSpace(email)
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(1245651780)`); err != nil {
+		return User{}, err
+	}
+	var currentRole string
+	var currentActive bool
+	if err := tx.QueryRowContext(ctx, `SELECT role::text,is_active FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	} else if err != nil {
+		return User{}, err
+	}
+	if currentRole == "admin" && currentActive && (role != "admin" || !active) {
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE role='admin' AND is_active FOR UPDATE`)
+		if err != nil {
+			return User{}, err
+		}
+		adminCount := 0
+		for rows.Next() {
+			adminCount++
+		}
+		if err := rows.Close(); err != nil {
+			return User{}, err
+		}
+		if adminCount <= 1 {
+			return User{}, ErrLastAdmin
+		}
+	}
 	var user User
-	err := s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE users SET display_name = $2, email = $3, role = $4, is_active = $5, updated_at = now()
 		WHERE id = $1
 		RETURNING id, username, display_name, email, avatar_url, role::text, is_active`,
 		id, strings.TrimSpace(displayName), emailValue, role, active,
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	if err != nil {
+		return User{}, err
+	}
+	if !active {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id=$1`, id); err != nil {
+			return User{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+	user.GroupIDs, err = s.userGroupIDs(ctx, user.ID)
+	return user, err
+}
+
+func (s *Service) UserByUsername(ctx context.Context, username string) (User, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return User{}, ErrValidation
+	}
+	var user User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id,username,display_name,email,avatar_url,role::text,is_active
+		FROM users WHERE lower(username)=lower($1)`, username,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
@@ -139,6 +196,18 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 		user.GroupIDs, err = s.userGroupIDs(ctx, user.ID)
 	}
 	return user, err
+}
+
+func (s *Service) SetUserActiveByUsername(ctx context.Context, username string, active bool) (User, error) {
+	user, err := s.UserByUsername(ctx, username)
+	if err != nil {
+		return User{}, err
+	}
+	email := ""
+	if user.Email != nil {
+		email = *user.Email
+	}
+	return s.UpdateUser(ctx, user.ID, user.DisplayName, email, user.Role, active)
 }
 
 func (s *Service) SetUserGroups(ctx context.Context, userID string, groupIDs []string) error {

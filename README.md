@@ -130,12 +130,25 @@ docker compose run --rm app /usr/local/bin/jkb-admin user add \
 docker compose run --rm app /usr/local/bin/jkb-admin user password admin
 ```
 
+Просмотр профиля и изменение активности:
+
+```sh
+docker compose run --rm app /usr/local/bin/jkb-admin user show admin
+docker compose run --rm app /usr/local/bin/jkb-admin user disable alice
+docker compose run --rm app /usr/local/bin/jkb-admin user enable alice
+```
+
+`user show` выводит ID, логин, отображаемое имя, email, роль, активность и
+группы. Хеш пароля, сессии и API-токены не выводятся. Отключить последнего
+активного администратора нельзя.
+
 Справка:
 
 ```sh
 docker compose run --rm app /usr/local/bin/jkb-admin --help
 docker compose run --rm app /usr/local/bin/jkb-admin user add --help
 docker compose run --rm app /usr/local/bin/jkb-admin user password --help
+docker compose run --rm app /usr/local/bin/jkb-admin user show --help
 ```
 
 ## Remote MCP

@@ -21,10 +21,16 @@ import (
 const usage = `Usage:
   jkb-admin user add [options] <username>
   jkb-admin user password <username>
+  jkb-admin user show <username>
+  jkb-admin user enable <username>
+  jkb-admin user disable <username>
 
 Commands:
   user add         Create an active user
   user password    Reset a user's password and revoke their web sessions
+  user show        Show non-sensitive user information
+  user enable      Enable a user
+  user disable     Disable a user and revoke their web sessions
 
 Run "jkb-admin user <command> --help" for command options.`
 
@@ -53,13 +59,16 @@ func run(args []string) error {
 	var addOptions *userAddOptions
 	var username string
 	var err error
-	switch args[1] {
+	command := args[1]
+	switch command {
 	case "add":
 		options, parseErr := parseUserAdd(args[2:], os.Stderr)
 		err = parseErr
 		addOptions = &options
 	case "password":
 		username, err = parseUserPassword(args[2:], os.Stderr)
+	case "show", "enable", "disable":
+		username, err = parseUsernameCommand(command, args[2:], os.Stderr)
 	default:
 		return errors.New(usage)
 	}
@@ -82,12 +91,34 @@ func run(args []string) error {
 	}
 	defer db.Close()
 
+	service := board.NewService(db)
+	switch command {
+	case "show":
+		user, err := service.UserByUsername(ctx, username)
+		if err != nil {
+			return fmt.Errorf("get user: %w", err)
+		}
+		groups, err := service.ListGroups(ctx)
+		if err != nil {
+			return fmt.Errorf("list user groups: %w", err)
+		}
+		printUser(os.Stdout, user, groups)
+		return nil
+	case "enable", "disable":
+		active := command == "enable"
+		user, err := service.SetUserActiveByUsername(ctx, username, active)
+		if err != nil {
+			return fmt.Errorf("%s user: %w", command, err)
+		}
+		fmt.Fprintf(os.Stdout, "user %s active=%t\n", user.Username, user.IsActive)
+		return nil
+	}
+
 	password, err := readPassword(os.Stdin, os.Stderr)
 	if err != nil {
 		return err
 	}
 	defer clear(password)
-	service := board.NewService(db)
 	if addOptions != nil {
 		user, err := service.CreateUser(
 			ctx,
@@ -108,6 +139,29 @@ func run(args []string) error {
 	}
 	fmt.Fprintf(os.Stdout, "reset password for user %s and revoked web sessions\n", username)
 	return nil
+}
+
+func printUser(output io.Writer, user board.User, groups []board.Group) {
+	email := "-"
+	if user.Email != nil {
+		email = *user.Email
+	}
+	fmt.Fprintf(output, "ID: %s\nUsername: %s\nDisplay name: %s\nEmail: %s\nRole: %s\nActive: %t\nGroups:\n",
+		user.ID, user.Username, user.DisplayName, email, user.Role, user.IsActive)
+	membership := make(map[string]bool, len(user.GroupIDs))
+	for _, id := range user.GroupIDs {
+		membership[id] = true
+	}
+	count := 0
+	for _, group := range groups {
+		if membership[group.ID] {
+			fmt.Fprintf(output, "  - %s (%s)\n", group.Name, group.ID)
+			count++
+		}
+	}
+	if count == 0 {
+		fmt.Fprintln(output, "  -")
+	}
 }
 
 func parseUserAdd(args []string, output io.Writer) (userAddOptions, error) {
@@ -155,6 +209,25 @@ func parseUserPassword(args []string, output io.Writer) (string, error) {
 	}
 	if flags.NArg() != 1 {
 		return "", errors.New("user password requires exactly one username")
+	}
+	username := strings.TrimSpace(flags.Arg(0))
+	if username == "" {
+		return "", errors.New("username must not be blank")
+	}
+	return username, nil
+}
+
+func parseUsernameCommand(command string, args []string, output io.Writer) (string, error) {
+	flags := flag.NewFlagSet("user "+command, flag.ContinueOnError)
+	flags.SetOutput(output)
+	flags.Usage = func() {
+		fmt.Fprintf(output, "Usage: jkb-admin user %s <username>\n", command)
+	}
+	if err := flags.Parse(args); err != nil {
+		return "", err
+	}
+	if flags.NArg() != 1 {
+		return "", fmt.Errorf("user %s requires exactly one username", command)
 	}
 	username := strings.TrimSpace(flags.Arg(0))
 	if username == "" {

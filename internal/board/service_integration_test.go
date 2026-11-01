@@ -41,6 +41,24 @@ func TestReferenceDataIntegration(t *testing.T) {
 	if _, err := auth.NewService(db).Login(ctx, "developer", "another correct password", time.Hour); err != nil {
 		t.Fatalf("login after password reset: %v", err)
 	}
+	admin, err := service.CreateUser(ctx, "admin", "Administrator", "", "admin", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetUserActiveByUsername(ctx, admin.Username, false); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("disable last admin error=%v", err)
+	}
+	if _, err := service.CreateUser(ctx, "backup-admin", "Backup Administrator", "", "admin", "correct horse battery staple"); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := service.SetUserActiveByUsername(ctx, admin.Username, false)
+	if err != nil || disabled.IsActive {
+		t.Fatalf("disabled admin=%#v err=%v", disabled, err)
+	}
+	loaded, err := service.UserByUsername(ctx, "ADMIN")
+	if err != nil || loaded.ID != admin.ID || loaded.IsActive {
+		t.Fatalf("loaded admin=%#v err=%v", loaded, err)
+	}
 	if err := service.SetUserGroups(ctx, user.ID, []string{group.ID}); err != nil {
 		t.Fatal(err)
 	}
