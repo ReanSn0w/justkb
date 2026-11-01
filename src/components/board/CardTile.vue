@@ -12,7 +12,7 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
     :aria-label="`JKB-${card.number}: ${card.title}`"
     @dragstart="$emit('drag', card)"
   >
-    <div class="card-content">
+    <div class="card-content p-4">
       <RouterLink :to="`/cards/${card.id}`">
         <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
         <p class="has-text-weight-semibold">{{ card.title }}</p>

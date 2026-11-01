@@ -13,7 +13,7 @@ function toggleTag(id: string) {
 }
 </script>
 <template>
-  <aside class="box" aria-label="Фильтры доски">
+  <aside class="box p-4" aria-label="Фильтры доски">
     <h2 class="title is-5">Фильтры</h2>
     <div class="field is-grouped is-grouped-multiline">
       <div class="control is-expanded">
@@ -25,8 +25,8 @@ function toggleTag(id: string) {
           aria-label="Поиск задач"
         />
       </div>
-      <div class="control">
-        <div class="select">
+      <div class="control is-expanded">
+        <div class="select is-fullwidth">
           <select v-model="board.filters.epic_id" aria-label="Проект">
             <option :value="undefined" disabled>Выберите проект</option>
             <option value="">Все проекты</option>
@@ -37,8 +37,8 @@ function toggleTag(id: string) {
           </select>
         </div>
       </div>
-      <div class="control">
-        <div class="select">
+      <div class="control is-expanded">
+        <div class="select is-fullwidth">
           <select v-model="board.filters.group_id" aria-label="Группа">
             <option :value="undefined" disabled>Выберите группу</option>
             <option value="">Все группы</option>
@@ -49,8 +49,8 @@ function toggleTag(id: string) {
           </select>
         </div>
       </div>
-      <div class="control">
-        <div class="select">
+      <div class="control is-expanded">
+        <div class="select is-fullwidth">
           <select v-model="board.filters.assignee_id" aria-label="Исполнитель">
             <option :value="undefined" disabled>Выберите исполнителя</option>
             <option value="">Все исполнители</option>
