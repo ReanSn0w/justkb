@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type User } from '../api'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
+import UserAvatar from '../components/user/UserAvatar.vue'
 import { useToastStore } from '../stores/toasts'
 type Tab = 'users' | 'groups' | 'columns' | 'tags'
 const labels: Record<Tab, string> = {
@@ -147,6 +148,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | T
       <div class="box">
         <template v-if="tab === 'users'">
           <article v-for="user in users" :key="user.id" class="media">
+            <div class="media-left"><UserAvatar :user="user" :size="48" /></div>
             <div class="media-content">
               <div class="content">
                 <p>

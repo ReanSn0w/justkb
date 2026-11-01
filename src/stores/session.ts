@@ -34,5 +34,8 @@ export const useSessionStore = defineStore('session', () => {
       setCsrfToken('')
     }
   }
-  return { user, csrf, ready, restore, login, logout }
+  function setUser(value: User) {
+    user.value = value
+  }
+  return { user, csrf, ready, restore, login, logout, setUser }
 })

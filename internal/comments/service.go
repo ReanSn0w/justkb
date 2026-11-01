@@ -19,8 +19,9 @@ type Actor struct {
 }
 
 type Author struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
+	ID          string  `json:"id"`
+	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
 }
 
 type Comment struct {
@@ -50,7 +51,7 @@ func (s *Service) ListEpic(ctx context.Context, epicID string) ([]Comment, error
 func (s *Service) list(ctx context.Context, cardID, epicID string) ([]Comment, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id,c.card_id,c.epic_id,c.author_user_id,c.author_token_id,c.body,c.created_at,c.updated_at,
-		       u.id,u.display_name
+		       u.id,u.display_name,u.avatar_url
 		FROM comments c JOIN users u ON u.id=c.author_user_id
 		WHERE ($1 <> '' AND c.card_id=NULLIF($1,'')::uuid)
 		   OR ($2 <> '' AND c.epic_id=NULLIF($2,'')::uuid)
@@ -63,7 +64,7 @@ func (s *Service) list(ctx context.Context, cardID, epicID string) ([]Comment, e
 	for rows.Next() {
 		var item Comment
 		if err := rows.Scan(&item.ID, &item.CardID, &item.EpicID, &item.AuthorUserID, &item.AuthorTokenID,
-			&item.Body, &item.CreatedAt, &item.UpdatedAt, &item.Author.ID, &item.Author.DisplayName); err != nil {
+			&item.Body, &item.CreatedAt, &item.UpdatedAt, &item.Author.ID, &item.Author.DisplayName, &item.Author.AvatarURL); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -107,11 +108,11 @@ func (s *Service) create(ctx context.Context, cardID, epicID string, actor Actor
 			RETURNING *
 		)
 		SELECT c.id,c.card_id,c.epic_id,c.author_user_id,c.author_token_id,c.body,c.created_at,c.updated_at,
-		       u.id,u.display_name
+		       u.id,u.display_name,u.avatar_url
 		FROM inserted c JOIN users u ON u.id=c.author_user_id`,
 		cardID, epicID, actor.UserID, tokenID, body,
 	).Scan(&item.ID, &item.CardID, &item.EpicID, &item.AuthorUserID, &item.AuthorTokenID,
-		&item.Body, &item.CreatedAt, &item.UpdatedAt, &item.Author.ID, &item.Author.DisplayName)
+		&item.Body, &item.CreatedAt, &item.UpdatedAt, &item.Author.ID, &item.Author.DisplayName, &item.Author.AvatarURL)
 	if err != nil {
 		return Comment{}, err
 	}

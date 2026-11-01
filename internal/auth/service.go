@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnauthenticated    = errors.New("unauthenticated")
 	ErrForbidden          = errors.New("forbidden")
+	ErrValidation         = errors.New("profile validation failed")
 )
 
 type User struct {
@@ -152,6 +154,41 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, userID, displayName string) (User, error) {
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" || len([]rune(displayName)) > 200 {
+		return User{}, ErrValidation
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name=$2,updated_at=now() WHERE id=$1 AND is_active`, userID, displayName)
+	if err != nil {
+		return User{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return User{}, err
+	}
+	if affected == 0 {
+		return User{}, ErrUnauthenticated
+	}
+	return s.UserByID(ctx, userID)
+}
+
+func (s *Service) UserByID(ctx context.Context, userID string) (User, error) {
+	var user User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id,username,display_name,email,avatar_url,role::text,is_active
+		FROM users WHERE id=$1 AND is_active`, userID,
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrUnauthenticated
+	}
+	if err != nil {
+		return User{}, err
+	}
+	user.GroupIDs, err = s.groupIDs(ctx, user.ID)
+	return user, err
 }
 
 func (s *Service) CreateAdmin(ctx context.Context, username, displayName, password string) (User, error) {

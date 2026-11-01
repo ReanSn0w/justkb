@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Card } from '../../api'
+import UserAvatar from '../user/UserAvatar.vue'
 defineProps<{ card: Card }>()
 defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
 </script>
@@ -19,9 +20,10 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
       <div class="tags mt-4 mb-2">
         <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
         <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
-        <span v-if="card.assignee" class="tag is-info is-light">{{
-          card.assignee.display_name
-        }}</span>
+        <span v-if="card.assignee" class="tag is-info is-light">
+          <UserAvatar :user="card.assignee" :size="24" />
+          <span class="ml-1">{{ card.assignee.display_name }}</span>
+        </span>
       </div>
       <div v-if="card.tags.length" class="tags mb-3">
         <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">{{ tag.name }}</span>

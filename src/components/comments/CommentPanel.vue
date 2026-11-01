@@ -5,6 +5,7 @@ import { renderMarkdown } from '../../features/markdown'
 import { useToastStore } from '../../stores/toasts'
 import BaseButton from '../ui/BaseButton.vue'
 import StatusState from '../ui/StatusState.vue'
+import UserAvatar from '../user/UserAvatar.vue'
 
 const props = defineProps<{ entityId: string; entityType: 'card' | 'project' }>()
 const items = ref<Comment[]>([])
@@ -71,6 +72,7 @@ onMounted(load)
     <StatusState v-else-if="!items.length" title="Комментариев пока нет" />
     <template v-else>
       <article v-for="item in items" :key="item.id" class="media">
+        <div class="media-left"><UserAvatar :user="item.author" :size="48" /></div>
         <div class="media-content">
           <div class="content">
             <p class="mb-2">

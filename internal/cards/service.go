@@ -45,8 +45,9 @@ type CardGroup struct {
 }
 
 type CardAssignee struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
+	ID          string  `json:"id"`
+	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
 }
 
 type Card struct {
@@ -456,7 +457,7 @@ const cardSelect = `
 	COALESCE((SELECT json_agg(json_build_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',a.created_at) ORDER BY a.created_at,a.id) FROM attachments a WHERE a.card_id=c.id),'[]'::json),
 	(SELECT json_build_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
 	(SELECT json_build_object('id',g.id,'name',g.name) FROM user_groups g WHERE g.id=c.group_id),
-	(SELECT json_build_object('id',u.id,'display_name',u.display_name) FROM users u WHERE u.id=c.assignee_id)
+	(SELECT json_build_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id)
 	FROM cards c`
 
 type scanner interface{ Scan(...any) error }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ReanSn0w/justkb/internal/attachments"
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/avatars"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/comments"
@@ -24,6 +25,7 @@ const jsonBodyLimit = 1 << 20
 
 type api struct {
 	auth          *auth.Service
+	avatars       *avatars.Service
 	board         *board.Service
 	cards         *cards.Service
 	comments      *comments.Service
@@ -39,8 +41,13 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	if err != nil {
 		panic(err)
 	}
+	avatarService, err := avatars.NewService(deps.DB, deps.StoragePath)
+	if err != nil {
+		panic(err)
+	}
 	server := &api{
 		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
+		avatars:     avatarService,
 		comments:    comments.NewService(deps.DB),
 		attachments: attachmentService, attachmentMax: deps.AttachmentMaxSize, cookieSecure: deps.CookieSecure,
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
@@ -49,11 +56,15 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("POST /api/v1/auth/login", server.login)
 	mux.Handle("POST /api/v1/auth/logout", server.member(http.HandlerFunc(server.logout)))
 	mux.Handle("GET /api/v1/auth/me", server.member(http.HandlerFunc(server.me)))
+	mux.Handle("PATCH /api/v1/auth/profile", server.member(http.HandlerFunc(server.updateProfile)))
+	mux.Handle("POST /api/v1/auth/avatar", server.member(http.HandlerFunc(server.uploadAvatar)))
+	mux.Handle("DELETE /api/v1/auth/avatar", server.member(http.HandlerFunc(server.deleteAvatar)))
 	mux.Handle("PUT /api/v1/auth/password", server.member(http.HandlerFunc(server.changePassword)))
 
 	mux.Handle("GET /api/v1/users", server.member(http.HandlerFunc(server.listUsers)))
 	mux.Handle("POST /api/v1/users", server.admin(http.HandlerFunc(server.createUser)))
 	mux.Handle("GET /api/v1/users/{id}", server.member(http.HandlerFunc(server.getUser)))
+	mux.Handle("GET /api/v1/users/{id}/avatar", server.member(http.HandlerFunc(server.downloadAvatar)))
 	mux.Handle("PATCH /api/v1/users/{id}", server.admin(http.HandlerFunc(server.updateUser)))
 	mux.Handle("PUT /api/v1/users/{id}/groups", server.admin(http.HandlerFunc(server.setUserGroups)))
 	mux.Handle("PUT /api/v1/users/{id}/password", server.admin(http.HandlerFunc(server.resetUserPassword)))
@@ -178,6 +189,61 @@ func (a *api) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.cookieSecure, SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) updateProfile(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		DisplayName string `json:"display_name"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.auth.UpdateProfile(r.Context(), principal.User.ID, input.DisplayName)
+	writeItem(w, r, item, err)
+}
+
+func (a *api) uploadAvatar(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, avatars.MaxSize+(1<<20))
+	if err := r.ParseMultipartForm(avatars.MaxSize); err != nil {
+		handleError(w, r, avatars.ErrTooLarge)
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	defer file.Close()
+	principal, _ := PrincipalFromContext(r.Context())
+	if _, err := a.avatars.Upload(r.Context(), principal.User.ID, file); err != nil {
+		handleError(w, r, err)
+		return
+	}
+	item, err := a.auth.UserByID(r.Context(), principal.User.ID)
+	writeItem(w, r, item, err)
+}
+
+func (a *api) deleteAvatar(w http.ResponseWriter, r *http.Request) {
+	principal, _ := PrincipalFromContext(r.Context())
+	if err := a.avatars.Delete(r.Context(), principal.User.ID); err != nil {
+		handleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) downloadAvatar(w http.ResponseWriter, r *http.Request) {
+	download, err := a.avatars.Open(r.Context(), r.PathValue("id"))
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	defer download.File.Close()
+	w.Header().Set("Content-Type", download.MediaType)
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, download.File)
 }
 
 func (a *api) listUsers(w http.ResponseWriter, r *http.Request) {
@@ -672,15 +738,15 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
-	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
+	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, avatars.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
 		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
-	case errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, comments.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
+	case errors.Is(err, auth.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, comments.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, avatars.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Validation failed"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
 	case errors.Is(err, board.ErrColumnNotEmpty):
 		status, code, message = http.StatusConflict, "column_not_empty", "Column contains cards"
-	case errors.Is(err, attachments.ErrTooLarge):
+	case errors.Is(err, attachments.ErrTooLarge), errors.Is(err, avatars.ErrTooLarge):
 		status, code, message = http.StatusRequestEntityTooLarge, "attachment_too_large", "Attachment is too large"
 	}
 	writeAPIError(w, r, status, code, message, nil)

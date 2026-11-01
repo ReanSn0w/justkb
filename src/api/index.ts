@@ -38,6 +38,11 @@ export const authApi = {
     ),
   logout: () => request<void>('/auth/logout', json('POST')),
   me: () => request<{ user: User; groups: Group[]; csrf_token: string }>('/auth/me'),
+  profile: (display_name: string) =>
+    request<User>('/auth/profile', json('PATCH', { display_name })),
+  uploadAvatar: (file: File, progress?: (loaded: number, total: number) => void) =>
+    upload<User>('/auth/avatar', file, progress),
+  deleteAvatar: () => request<void>('/auth/avatar', { method: 'DELETE' }),
   password: (current_password: string, new_password: string) =>
     request<void>('/auth/password', json('PUT', { current_password, new_password })),
 }

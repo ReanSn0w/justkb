@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useSessionStore } from '../stores/session'
 import { useRouter } from 'vue-router'
+import UserAvatar from '../components/user/UserAvatar.vue'
 const session = useSessionStore()
 const router = useRouter()
 const menuOpen = ref(false)
@@ -56,9 +57,10 @@ async function logout() {
         >
       </div>
       <div class="navbar-end">
-        <RouterLink class="navbar-item" to="/profile" @click="menuOpen = false">{{
-          session.user?.display_name
-        }}</RouterLink>
+        <RouterLink class="navbar-item" to="/profile" @click="menuOpen = false">
+          <UserAvatar :user="session.user" :size="32" />
+          <span class="ml-2">{{ session.user?.display_name }}</span>
+        </RouterLink>
         <div class="navbar-item">
           <button class="button is-light" @click="logout">Выйти</button>
         </div>

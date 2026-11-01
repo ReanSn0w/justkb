@@ -10,6 +10,7 @@ import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
 import CommentPanel from '../components/comments/CommentPanel.vue'
+import UserAvatar from '../components/user/UserAvatar.vue'
 const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
@@ -186,7 +187,8 @@ function toggleTag(id: string) {
                 <span v-if="card.epic" class="tag is-link is-light">{{ card.epic.name }}</span>
                 <span v-if="card.group" class="tag is-primary is-light">{{ card.group.name }}</span>
                 <span v-if="card.assignee" class="tag is-info is-light">
-                  {{ card.assignee.display_name }}
+                  <UserAvatar :user="card.assignee" :size="24" />
+                  <span class="ml-1">{{ card.assignee.display_name }}</span>
                 </span>
                 <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">
                   {{ tag.name }}

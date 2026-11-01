@@ -71,7 +71,7 @@ export interface Comment {
   body: string
   created_at: string
   updated_at: string
-  author: Pick<User, 'id' | 'display_name'>
+  author: Pick<User, 'id' | 'display_name' | 'avatar_url'>
 }
 export interface Card extends Timestamps {
   id: UUID

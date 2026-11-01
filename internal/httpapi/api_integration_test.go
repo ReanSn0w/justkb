@@ -62,6 +62,37 @@ func TestRESTContractIntegration(t *testing.T) {
 	if len(cookies) != 1 || loginPayload.CSRF == "" {
 		t.Fatal("login did not return session and CSRF")
 	}
+	profile := request(handler, http.MethodPatch, "/api/v1/auth/profile", `{"display_name":"REST Admin"}`, cookies[0], loginPayload.CSRF)
+	if profile.Code != http.StatusOK || !strings.Contains(profile.Body.String(), "REST Admin") {
+		t.Fatalf("profile status=%d body=%s", profile.Code, profile.Body.String())
+	}
+	var avatarBody bytes.Buffer
+	avatarWriter := multipart.NewWriter(&avatarBody)
+	avatarPart, err := avatarWriter.CreateFormFile("file", "avatar.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = avatarPart.Write([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	_ = avatarWriter.Close()
+	avatarRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/avatar", &avatarBody)
+	avatarRequest.Header.Set("Content-Type", avatarWriter.FormDataContentType())
+	avatarRequest.Header.Set("X-CSRF-Token", loginPayload.CSRF)
+	avatarRequest.AddCookie(cookies[0])
+	avatarResponse := httptest.NewRecorder()
+	handler.ServeHTTP(avatarResponse, avatarRequest)
+	if avatarResponse.Code != http.StatusOK {
+		t.Fatalf("avatar upload status=%d body=%s", avatarResponse.Code, avatarResponse.Body.String())
+	}
+	var avatarUser struct {
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.Unmarshal(avatarResponse.Body.Bytes(), &avatarUser); err != nil || avatarUser.AvatarURL == "" {
+		t.Fatalf("avatar response=%s err=%v", avatarResponse.Body.String(), err)
+	}
+	avatarDownload := request(handler, http.MethodGet, strings.Split(avatarUser.AvatarURL, "?")[0], "", cookies[0], "")
+	if avatarDownload.Code != http.StatusOK || avatarDownload.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("avatar download status=%d type=%s", avatarDownload.Code, avatarDownload.Header().Get("Content-Type"))
+	}
 
 	unknown := request(handler, http.MethodPost, "/api/v1/cards", `{"title":"Bad","column_id":"`+columnID+`","unknown":true}`, cookies[0], loginPayload.CSRF)
 	if unknown.Code != http.StatusBadRequest {
