@@ -36,7 +36,6 @@ async function submit() {
           <div class="column is-one-third-desktop is-half-tablet">
             <form class="box" @submit.prevent="submit">
               <h1 class="title">Вход в JKB</h1>
-              <p class="subtitle is-6">Лёгкая доска без лишнего церемониала.</p>
               <BaseField label="Имя пользователя" for-id="username"
                 ><input
                   id="username"

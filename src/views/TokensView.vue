@@ -51,10 +51,6 @@ function status(item: ApiToken) {
 <template>
   <section class="section">
     <div class="container">
-      <header class="mb-5">
-        <h1 class="title">API-токены</h1>
-        <p class="subtitle is-6">Персональный доступ для агентов и автоматизации.</p>
-      </header>
       <div class="columns is-variable is-5">
         <div class="column">
           <form class="box" @submit.prevent="create">

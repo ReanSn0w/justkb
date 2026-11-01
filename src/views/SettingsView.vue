@@ -147,7 +147,6 @@ async function toggleEpic(item: Epic) {
 <template>
   <section class="section">
     <div class="container">
-      <h1 class="title">Настройки</h1>
       <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
       <nav class="tabs is-boxed" aria-label="Разделы настроек">
         <ul>

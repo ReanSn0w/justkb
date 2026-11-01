@@ -33,7 +33,6 @@ async function save() {
     <div class="container">
       <div class="columns is-centered">
         <div class="column is-two-thirds-tablet is-half-desktop">
-          <h1 class="title">Профиль</h1>
           <form class="box" @submit.prevent="save">
             <BaseField label="Текущий пароль"
               ><input
