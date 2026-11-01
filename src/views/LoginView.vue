@@ -36,7 +36,8 @@ async function submit() {
         <div class="columns is-centered">
           <div class="column is-one-third-desktop is-half-tablet">
             <form class="box" @submit.prevent="submit">
-              <h1 class="title">Вход в {{ systemName }}</h1>
+              <h1 class="title">{{ systemName }}</h1>
+              <p class="subtitle">Канбан-доска проекта</p>
               <BaseField label="Имя пользователя" for-id="username"
                 ><input
                   id="username"
