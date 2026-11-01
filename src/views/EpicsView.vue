@@ -23,7 +23,7 @@ async function load() {
   try {
     items.value = (await epicsApi.list(session.user?.role === 'admin')).items
   } catch {
-    error.value = 'Не удалось загрузить EPIC'
+    error.value = 'Не удалось загрузить проекты'
   } finally {
     loading.value = false
   }
@@ -38,10 +38,10 @@ async function create() {
       color: '#00d1b2',
       is_archived: false,
     })
-    toasts.show('EPIC создан')
-    await router.push(`/epics/${epic.id}`)
+    toasts.show('Проект создан')
+    await router.push(`/projects/${epic.id}`)
   } catch {
-    error.value = 'Не удалось создать EPIC'
+    error.value = 'Не удалось создать проект'
   }
 }
 
@@ -53,7 +53,7 @@ onMounted(load)
     <div class="container">
       <div v-if="error" class="notification is-danger is-light" role="alert">{{ error }}</div>
       <form v-if="session.user?.role === 'admin'" class="box" @submit.prevent="create">
-        <h2 class="title is-5">Новый EPIC</h2>
+        <h2 class="title is-5">Новый проект</h2>
         <div class="columns is-align-items-flex-end">
           <div class="column">
             <BaseField label="Название">
@@ -73,15 +73,15 @@ onMounted(load)
         </div>
       </form>
 
-      <StatusState v-if="loading" title="Загружаем EPIC…" tone="loading" />
-      <StatusState v-else-if="!items.length" title="EPIC пока нет" />
+      <StatusState v-if="loading" title="Загружаем проекты…" tone="loading" />
+      <StatusState v-else-if="!items.length" title="Проектов пока нет" />
       <div v-else class="columns is-multiline">
         <div
           v-for="epic in items"
           :key="epic.id"
           class="column is-half-tablet is-one-third-desktop"
         >
-          <RouterLink :to="`/epics/${epic.id}`" class="card is-block">
+          <RouterLink :to="`/projects/${epic.id}`" class="card is-block">
             <div class="card-content">
               <div class="level is-mobile mb-4">
                 <div class="level-left">

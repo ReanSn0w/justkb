@@ -58,7 +58,7 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.board.ListColumns(ctx)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_epics", Description: "List EPIC projects.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	mcp.AddTool(server, &mcp.Tool{Name: "list_epics", Description: "List projects.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		IncludeArchived bool `json:"include_archived,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
@@ -67,7 +67,7 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.board.ListEpics(ctx, input.IncludeArchived)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "get_epic", Description: "Get an EPIC project with its description and task count.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	mcp.AddTool(server, &mcp.Tool{Name: "get_epic", Description: "Get a project with its description and task count.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		EpicID string `json:"epic_id"`
 	}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
@@ -97,11 +97,11 @@ func (s *services) addTools(server *mcp.Server) {
 		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived)
 		return domainResult(item, err)
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create an EPIC project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
 		input.EpicID = ""
 		return saveEpic(ctx, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update an EPIC project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update a project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
 		return saveEpic(ctx, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {

@@ -13,7 +13,7 @@ vi.mock('../api', async () => {
   }
 })
 
-describe('EPIC directory', () => {
+describe('project directory', () => {
   it('shows project descriptions and task counts', async () => {
     vi.mocked(epicsApi.list).mockResolvedValue({
       items: [

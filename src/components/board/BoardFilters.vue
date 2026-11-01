@@ -27,10 +27,10 @@ function toggleTag(id: string) {
       </div>
       <div class="control">
         <div class="select">
-          <select v-model="board.filters.epic_id" aria-label="EPIC">
-            <option :value="undefined" disabled>Выберите EPIC</option>
-            <option value="">Все EPIC</option>
-            <option value="none">Без EPIC</option>
+          <select v-model="board.filters.epic_id" aria-label="Проект">
+            <option :value="undefined" disabled>Выберите проект</option>
+            <option value="">Все проекты</option>
+            <option value="none">Без проекта</option>
             <option v-for="epic in board.epics" :key="epic.id" :value="epic.id">
               {{ epic.name }}
             </option>

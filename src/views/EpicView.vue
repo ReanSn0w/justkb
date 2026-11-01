@@ -32,7 +32,7 @@ onMounted(async () => {
     epic.value = loadedEpic
     cards.value = loadedCards.items
   } catch {
-    error.value = 'EPIC не найден или недоступен'
+    error.value = 'Проект не найден или недоступен'
   } finally {
     loading.value = false
   }
@@ -53,9 +53,9 @@ async function save() {
       card_count: current.card_count,
       attachments: current.attachments,
     }
-    toasts.show('EPIC сохранён')
+    toasts.show('Проект сохранён')
   } catch {
-    error.value = 'Не удалось сохранить EPIC'
+    error.value = 'Не удалось сохранить проект'
   }
 }
 
@@ -69,12 +69,12 @@ async function toggleArchive() {
 <template>
   <section class="section">
     <div class="container">
-      <StatusState v-if="loading" title="Загружаем EPIC…" tone="loading" />
+      <StatusState v-if="loading" title="Загружаем проект…" tone="loading" />
       <StatusState v-else-if="!epic" :title="error" tone="error" />
       <template v-else>
         <header class="level">
           <div class="level-left">
-            <button class="button is-light" @click="router.push('/epics')">← EPIC</button>
+            <button class="button is-light" @click="router.push('/projects')">← Проекты</button>
           </div>
           <div v-if="isAdmin" class="level-right">
             <div class="buttons">
@@ -128,7 +128,7 @@ async function toggleArchive() {
                   </RouterLink>
                 </div>
               </article>
-              <StatusState v-if="!cards.length" title="В этом EPIC пока нет задач" />
+              <StatusState v-if="!cards.length" title="В этом проекте пока нет задач" />
             </section>
           </div>
 

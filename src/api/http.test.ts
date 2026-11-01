@@ -48,7 +48,7 @@ describe('HTTP API client', () => {
     await cardsApi.list({ epic_id: 'none', tag_ids: ['a', 'b'], archived: false })
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/v1/cards?epic_id=none&tag_id=a&tag_id=b')
   })
-  it('loads a complete EPIC resource', async () => {
+  it('loads a complete project resource', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(JSON.stringify({ id: 'e1' }), { status: 200 }))

@@ -118,10 +118,10 @@ function toggleTag(id: string) {
               </BaseField>
               <div class="columns is-multiline">
                 <div class="column is-half">
-                  <BaseField label="EPIC">
+                  <BaseField label="Проект">
                     <div class="select is-fullwidth">
                       <select v-model="card.epic_id">
-                        <option :value="null">Без EPIC</option>
+                        <option :value="null">Без проекта</option>
                         <option v-for="epic in board.epics" :key="epic.id" :value="epic.id">
                           {{ epic.name }}
                         </option>

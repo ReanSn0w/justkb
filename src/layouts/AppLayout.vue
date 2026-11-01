@@ -35,9 +35,9 @@ async function logout() {
         <RouterLink
           class="navbar-item"
           active-class="is-active"
-          to="/epics"
+          to="/projects"
           @click="menuOpen = false"
-          >EPIC</RouterLink
+          >Проекты</RouterLink
         >
         <RouterLink
           class="navbar-item"
