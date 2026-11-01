@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cardsApi, epicsApi, type Card, type Epic } from '../api'
+import { cardsApi, directoryApi, epicsApi, type BoardColumn, type Card, type Epic } from '../api'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
 import CommentPanel from '../components/comments/CommentPanel.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
@@ -17,21 +17,44 @@ const session = useSessionStore()
 const toasts = useToastStore()
 const epic = ref<Epic | null>(null)
 const cards = ref<Card[]>([])
+const columns = ref<BoardColumn[]>([])
 const loading = ref(true)
 const error = ref('')
 const isAdmin = computed(() => session.user?.role === 'admin')
 const editing = computed(() => route.name === 'project-edit')
 const html = computed(() => renderMarkdown(epic.value?.description || ''))
+const countByColumn = computed(() =>
+  Object.fromEntries(
+    columns.value.map((column) => [
+      column.id,
+      cards.value.filter((card) => card.column_id === column.id).length,
+    ]),
+  ),
+)
+
+async function loadProjectCards(id: string) {
+  const first = await cardsApi.list({ epic_id: id, limit: 100 })
+  const items = [...first.items]
+  let cursor = first.next_cursor
+  while (cursor) {
+    const page = await cardsApi.list({ epic_id: id, limit: 100, cursor })
+    items.push(...page.items)
+    cursor = page.next_cursor
+  }
+  return items
+}
 
 onMounted(async () => {
   try {
     const id = String(route.params.id)
-    const [loadedEpic, loadedCards] = await Promise.all([
+    const [loadedEpic, loadedCards, loadedColumns] = await Promise.all([
       epicsApi.get(id),
-      cardsApi.list({ epic_id: id, limit: 100 }),
+      loadProjectCards(id),
+      directoryApi.columns(),
     ])
     epic.value = loadedEpic
-    cards.value = loadedCards.items
+    cards.value = loadedCards
+    columns.value = loadedColumns.items.sort((a, b) => a.position - b.position)
   } catch {
     error.value = 'Проект не найден или недоступен'
   } finally {
@@ -119,26 +142,50 @@ async function cancelEdit() {
               <StatusState v-else title="Описание пока не добавлено" />
             </div>
 
-            <section class="box">
-              <div class="level is-mobile">
-                <div class="level-left"><h2 class="title is-5 mb-0">Задачи</h2></div>
-                <div class="level-right">
-                  <span class="tag is-light">{{ cards.length }}</span>
-                </div>
-              </div>
-              <article v-for="card in cards" :key="card.id" class="media">
-                <div class="media-content">
-                  <RouterLink :to="`/cards/${card.id}`">
-                    <strong>JKB-{{ card.number }}</strong> · {{ card.title }}
-                  </RouterLink>
-                </div>
-              </article>
-              <StatusState v-if="!cards.length" title="В этом проекте пока нет задач" />
-            </section>
             <CommentPanel :entity-id="epic.id" entity-type="project" />
           </div>
 
           <div class="column">
+            <aside class="box">
+              <div class="level is-mobile">
+                <div class="level-left"><h2 class="title is-5 mb-0">Задачи</h2></div>
+                <div class="level-right">
+                  <span class="tag is-light">{{ epic.card_count }}</span>
+                </div>
+              </div>
+              <RouterLink
+                class="button is-primary is-fullwidth mb-5"
+                :to="{ name: 'board', query: { epic_id: epic.id } }"
+              >
+                Открыть на доске
+              </RouterLink>
+              <template v-if="cards.length">
+                <RouterLink
+                  v-for="column in columns"
+                  :key="column.id"
+                  class="block"
+                  :to="{
+                    name: 'board',
+                    query: { epic_id: epic.id, column_id: column.id },
+                  }"
+                >
+                  <span class="level is-mobile mb-1">
+                    <span class="level-left">{{ column.name }}</span>
+                    <span class="level-right tag is-light">{{
+                      countByColumn[column.id] || 0
+                    }}</span>
+                  </span>
+                  <progress
+                    class="progress is-primary is-small"
+                    :value="countByColumn[column.id] || 0"
+                    :max="cards.length"
+                  >
+                    {{ countByColumn[column.id] || 0 }} из {{ cards.length }}
+                  </progress>
+                </RouterLink>
+              </template>
+              <StatusState v-else title="В этом проекте пока нет задач" />
+            </aside>
             <aside class="box">
               <AttachmentPanel
                 :entity-id="epic.id"

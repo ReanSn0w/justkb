@@ -64,4 +64,15 @@ describe('board store', () => {
     })
     expect(store.cards[0]?.version).toBe(2)
   })
+  it('assigns quick-created cards to the filtered project', async () => {
+    vi.mocked(cardsApi.create).mockResolvedValue({ ...card, epic_id: 'project-1' })
+    const store = useBoardStore()
+    store.filters = { epic_id: 'project-1' }
+    await store.create('a', 'Project task')
+    expect(cardsApi.create).toHaveBeenCalledWith({
+      title: 'Project task',
+      column_id: 'a',
+      epic_id: 'project-1',
+    })
+  })
 })

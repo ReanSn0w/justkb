@@ -70,7 +70,12 @@ export const useBoardStore = defineStore('board', () => {
     await Promise.all([loadDirectories(), loadCards()])
   }
   async function create(column_id: string, title: string) {
-    const card = await cardsApi.create({ title, column_id })
+    const epicID = filters.value.epic_id
+    const card = await cardsApi.create({
+      title,
+      column_id,
+      epic_id: epicID && epicID !== 'none' ? epicID : undefined,
+    })
     cards.value.push(card)
     return card
   }
