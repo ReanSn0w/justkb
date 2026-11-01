@@ -57,17 +57,6 @@ async function keyboard(card: Card, direction: -1 | 1) {
 <template>
   <section class="section">
     <div class="container is-fluid">
-      <header class="level">
-        <div class="level-left">
-          <div>
-            <h1 class="title is-spaced">Доска</h1>
-            <p class="subtitle is-6">Одна доска, единый процесс.</p>
-          </div>
-        </div>
-        <div class="level-right">
-          <BaseButton tone="quiet" @click="board.loadCards">Обновить</BaseButton>
-        </div>
-      </header>
       <BoardFilters />
       <StatusState v-if="board.loading" title="Загружаем доску…" tone="loading" />
       <StatusState v-else-if="board.error" :title="board.error" tone="error">
