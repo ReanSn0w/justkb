@@ -1,0 +1,6 @@
+:root {
+  --bulma-link-h: var(--bulma-primary-h);
+  --bulma-link-s: var(--bulma-primary-s);
+  --bulma-link-l: var(--bulma-primary-on-scheme-l);
+  --bulma-link-on-scheme-l: var(--bulma-primary-on-scheme-l);
+}

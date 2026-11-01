@@ -4,6 +4,7 @@ import App from './App.vue'
 import { router } from './router'
 import { loadSystemName } from './system'
 import 'bulma/css/bulma.min.css'
+import './theme.css'
 
 async function bootstrap() {
   await loadSystemName()

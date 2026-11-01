@@ -21,7 +21,7 @@ const users = ref<User[]>([]),
   tags = ref<Tag[]>([]),
   tab = ref<Tab>('users'),
   name = ref(''),
-  color = ref('#5b6ee1'),
+  color = ref('#00d1b2'),
   error = ref(''),
   toasts = useToastStore()
 async function load() {
