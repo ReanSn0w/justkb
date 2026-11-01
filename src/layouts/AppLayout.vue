@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { useSessionStore } from '../stores/session'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import UserAvatar from '../components/user/UserAvatar.vue'
 import { systemName } from '../system'
 const session = useSessionStore()
 const router = useRouter()
+const route = useRoute()
 const menuOpen = ref(false)
 const userMenuOpen = ref(false)
 const userMenu = ref<HTMLElement | null>(null)
+const routeName = computed(() => String(route.name || ''))
+const boardActive = computed(() => ['board', 'card', 'card-edit'].includes(routeName.value))
+const projectsActive = computed(() =>
+  ['projects', 'project', 'project-edit'].includes(routeName.value),
+)
 onClickOutside(userMenu, () => (userMenuOpen.value = false))
 function closeMenus() {
   menuOpen.value = false
@@ -46,12 +52,16 @@ async function logout() {
     </div>
     <div :class="['navbar-menu', { 'is-active': menuOpen }]">
       <div class="navbar-start">
-        <RouterLink class="navbar-item is-tab" active-class="is-active" to="/" @click="closeMenus"
+        <RouterLink
+          :class="['navbar-item', 'is-tab', { 'is-active': boardActive }]"
+          :aria-current="boardActive ? 'page' : undefined"
+          to="/"
+          @click="closeMenus"
           >Доска</RouterLink
         >
         <RouterLink
-          class="navbar-item is-tab"
-          active-class="is-active"
+          :class="['navbar-item', 'is-tab', { 'is-active': projectsActive }]"
+          :aria-current="projectsActive ? 'page' : undefined"
           to="/projects"
           @click="closeMenus"
           >Проекты</RouterLink
