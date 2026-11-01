@@ -1,4 +1,4 @@
-import { json, request, upload } from './http'
+import { download, json, request, upload } from './http'
 import type {
   Activity,
   ApiToken,
@@ -113,6 +113,13 @@ export const tokensApi = {
   create: (data: { name: string; scopes: string[]; expires_at?: string | null }) =>
     request<IssuedToken>('/tokens', json('POST', data)),
   revoke: (id: UUID) => request<void>(`/tokens/${id}`, { method: 'DELETE' }),
+}
+export const adminApi = {
+  createBackup: () => download('/admin/backups'),
+  restoreBackup: (file: File, progress?: (loaded: number, total: number) => void) =>
+    upload<{ restored: boolean }>('/admin/backups/restore', file, progress, {
+      confirmation: 'RESTORE',
+    }),
 }
 export { ApiError, setCsrfToken } from './http'
 export type * from './types'

@@ -41,7 +41,7 @@ func TestRESTContractIntegration(t *testing.T) {
 	}
 	handler := New(Dependencies{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), StoragePath: t.TempDir(), Database: db, DB: db,
-		AttachmentMaxSize: 1024, CookieSecure: false,
+		DatabaseURL: url, AttachmentMaxSize: 1024, CookieSecure: false,
 	})
 
 	unauthorized := request(handler, http.MethodGet, "/api/v1/cards", "", nil, "")

@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/jkb ./cmd/jkb && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/jkb-admin ./cmd/jkb-admin
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata && \
+RUN apk add --no-cache ca-certificates postgresql17-client tzdata && \
     addgroup -S -g 10001 jkb && adduser -S -D -H -u 10001 -G jkb jkb
 WORKDIR /app
 COPY --from=backend /out/jkb /out/jkb-migrate /out/jkb-admin /usr/local/bin/

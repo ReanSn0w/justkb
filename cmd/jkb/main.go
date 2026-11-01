@@ -40,6 +40,7 @@ func main() {
 		StoragePath:       cfg.StoragePath,
 		Database:          db,
 		DB:                db,
+		DatabaseURL:       cfg.DatabaseURL,
 		CookieSecure:      cfg.CookieSecure,
 		AttachmentMaxSize: cfg.AttachmentMaxSize,
 	})

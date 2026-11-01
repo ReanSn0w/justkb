@@ -4,13 +4,16 @@ import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type Us
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
+import BackupSettings from '../components/admin/BackupSettings.vue'
 import { useToastStore } from '../stores/toasts'
-type Tab = 'users' | 'groups' | 'columns' | 'tags'
+type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
+type Tab = DirectoryTab | 'backup'
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
   groups: 'Группы',
   columns: 'Колонки',
   tags: 'Теги',
+  backup: 'Резервные копии',
 }
 const users = ref<User[]>([]),
   groups = ref<Group[]>([]),
@@ -95,7 +98,7 @@ async function moveColumn(index: number, delta: number) {
   await directoryApi.reorderColumns(next.map((x) => x.id))
   await load()
 }
-async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | Tag) {
+async function rename(kind: Exclude<DirectoryTab, 'users'>, item: Group | BoardColumn | Tag) {
   const value = prompt('Новое название', item.name)
   if (!value) return
   if (kind === 'groups') {
@@ -126,7 +129,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | T
           </li>
         </ul>
       </nav>
-      <form class="box" @submit.prevent="create">
+      <form v-if="tab !== 'backup'" class="box" @submit.prevent="create">
         <div class="columns is-align-items-flex-end">
           <div class="column">
             <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'">
@@ -145,7 +148,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | T
           </div>
         </div>
       </form>
-      <div class="box">
+      <div v-if="tab !== 'backup'" class="box">
         <template v-if="tab === 'users'">
           <article v-for="user in users" :key="user.id" class="media">
             <div class="media-left"><UserAvatar :user="user" :size="48" /></div>
@@ -215,7 +218,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | T
             </div>
           </article>
         </template>
-        <template v-else>
+        <template v-else-if="tab === 'tags'">
           <article v-for="item in tags" :key="item.id" class="media">
             <div class="media-content">
               <span class="tag is-info">{{ item.name }}</span>
@@ -239,6 +242,7 @@ async function rename(kind: Exclude<Tab, 'users'>, item: Group | BoardColumn | T
           Записей пока нет.
         </p>
       </div>
+      <BackupSettings v-else />
     </div>
   </section>
 </template>

@@ -123,11 +123,14 @@ JKB — одна общая kanban-доска для небольшой кома
 | Groups | `GET, POST /groups`; `GET, PATCH /groups/{id}` | Чтение — все, изменение — admin |
 | Columns | `GET, POST /columns`; `PATCH /columns/{id}`; `POST /columns/reorder`; `DELETE /columns/{id}` | Чтение — все, изменение — admin |
 | Projects (`epics`) | `GET, POST /epics`; `GET, PATCH /epics/{id}`; `POST /epics/{id}/attachments` | Чтение — все, изменение — admin; вложения — все |
-| Tags | `GET, POST /tags`; `GET, PATCH /tags/{id}` | Чтение — все, измение — admin |
+| Tags | `GET, POST /tags`; `GET, PATCH /tags/{id}` | Чтение — все, изменение — admin |
+| Backups | `POST /admin/backups`; `POST /admin/backups/restore` | Только admin |
 
 Первый admin создаётся после миграций командой `jkb-admin user add --role admin --display-name "Administrator" admin`. Эта же команда создаёт обычных пользователей (`member` по умолчанию); пароль вводится и подтверждается интерактивно. Сервер не имеет общедоступного setup endpoint.
 
 `GET /users/{id}/avatar` возвращает аватар авторизованному участнику. Аватары хранятся локально в `avatars` внутри каталога хранилища; принимаются JPEG, PNG, GIF и WebP размером до 5 МБ.
+
+`POST /admin/backups` возвращает `tar.gz` с manifest, data-only дампом PostgreSQL и локальными файлами. `POST /admin/backups/restore` принимает этот архив в `multipart/form-data` (`file`, `confirmation=RESTORE`) и заменяет текущие данные. Restore разрешён только при совпадении версии схемы. Операции выполняются под maintenance-lock; перед restore сервис создаёт внутренний rollback-снимок текущей базы и сохраняет прежний каталог файлов до успешного завершения.
 
 ### 4.4. Карточки
 

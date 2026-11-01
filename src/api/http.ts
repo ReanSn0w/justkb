@@ -59,6 +59,7 @@ export function upload<T>(
   path: string,
   file: File,
   onProgress?: (loaded: number, total: number) => void,
+  fields: Record<string, string> = {},
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -92,6 +93,27 @@ export function upload<T>(
     }
     const form = new FormData()
     form.append('file', file)
+    for (const [name, value] of Object.entries(fields)) form.append(name, value)
     xhr.send(form)
   })
+}
+
+export async function download(
+  path: string,
+  init: RequestInit = { method: 'POST' },
+): Promise<{ blob: Blob; filename: string }> {
+  const method = (init.method || 'POST').toUpperCase()
+  const headers = new Headers(init.headers)
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken)
+    headers.set('x-csrf-token', csrfToken)
+  const response = await fetch(`/api/v1${path}`, {
+    ...init,
+    method,
+    headers,
+    credentials: 'include',
+  })
+  if (!response.ok) throw await decodeError(response)
+  const disposition = response.headers.get('content-disposition') || ''
+  const match = disposition.match(/filename="?([^";]+)"?/i)
+  return { blob: await response.blob(), filename: match?.[1] || 'jkb-backup.tar.gz' }
 }

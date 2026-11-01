@@ -8,15 +8,18 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/attachments"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/avatars"
+	"github.com/ReanSn0w/justkb/internal/backups"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/comments"
+	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 )
@@ -26,6 +29,7 @@ const jsonBodyLimit = 1 << 20
 type api struct {
 	auth          *auth.Service
 	avatars       *avatars.Service
+	backups       *backups.Service
 	board         *board.Service
 	cards         *cards.Service
 	comments      *comments.Service
@@ -36,7 +40,7 @@ type api struct {
 	tokens        *tokens.Service
 }
 
-func registerAPI(mux *http.ServeMux, deps Dependencies) {
+func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) {
 	attachmentService, err := attachments.NewService(deps.DB, deps.StoragePath, deps.AttachmentMaxSize)
 	if err != nil {
 		panic(err)
@@ -45,9 +49,14 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	if err != nil {
 		panic(err)
 	}
+	backupService, err := backups.NewService(deps.DB, deps.DatabaseURL, deps.StoragePath, gate)
+	if err != nil {
+		panic(err)
+	}
 	server := &api{
 		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
 		avatars:     avatarService,
+		backups:     backupService,
 		comments:    comments.NewService(deps.DB),
 		attachments: attachmentService, attachmentMax: deps.AttachmentMaxSize, cookieSecure: deps.CookieSecure,
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
@@ -109,6 +118,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies) {
 	mux.Handle("GET /api/v1/tokens", server.member(http.HandlerFunc(server.listTokens)))
 	mux.Handle("POST /api/v1/tokens", server.member(http.HandlerFunc(server.createToken)))
 	mux.Handle("DELETE /api/v1/tokens/{id}", server.member(http.HandlerFunc(server.revokeToken)))
+	mux.Handle("POST /api/v1/admin/backups", server.admin(http.HandlerFunc(server.createBackup)))
+	mux.Handle("POST /api/v1/admin/backups/restore", server.admin(http.HandlerFunc(server.restoreBackup)))
 }
 
 func (a *api) member(next http.Handler) http.Handler { return RequireSession(a.auth, next) }
@@ -719,6 +730,61 @@ func (a *api) revokeToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *api) createBackup(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute))
+	archive, err := a.backups.Create(r.Context())
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	defer archive.Close()
+	file, err := os.Open(archive.Path)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": archive.Name}))
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, file)
+}
+
+func (a *api) restoreBackup(w http.ResponseWriter, r *http.Request) {
+	controller := http.NewResponseController(w)
+	_ = controller.SetReadDeadline(time.Now().Add(30 * time.Minute))
+	_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Minute))
+	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxUploadSize+(1<<20))
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeAPIError(w, r, http.StatusRequestEntityTooLarge, "backup_too_large", "Backup is too large", nil)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if r.FormValue("confirmation") != "RESTORE" {
+		writeAPIError(w, r, http.StatusUnprocessableEntity, "confirmation_required", "Restore confirmation is required", nil)
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "backup_required", "Backup file is required", nil)
+		return
+	}
+	defer file.Close()
+	if err := a.backups.Restore(r.Context(), file); err != nil {
+		handleError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"restored": true})
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, jsonBodyLimit)
 	decoder := json.NewDecoder(r.Body)
@@ -748,6 +814,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusConflict, "column_not_empty", "Column contains cards"
 	case errors.Is(err, attachments.ErrTooLarge), errors.Is(err, avatars.ErrTooLarge):
 		status, code, message = http.StatusRequestEntityTooLarge, "attachment_too_large", "Attachment is too large"
+	case errors.Is(err, backups.ErrInvalidArchive):
+		status, code, message = http.StatusUnprocessableEntity, "invalid_backup", "Backup archive is invalid"
+	case errors.Is(err, backups.ErrSchemaMismatch):
+		status, code, message = http.StatusConflict, "backup_schema_mismatch", "Backup schema version does not match"
+	case errors.Is(err, backups.ErrUnavailable):
+		status, code, message = http.StatusServiceUnavailable, "backup_unavailable", "PostgreSQL backup tools are unavailable"
 	}
 	writeAPIError(w, r, status, code, message, nil)
 }

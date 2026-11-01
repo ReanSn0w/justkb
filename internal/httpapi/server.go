@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/ReanSn0w/justkb/internal/frontend"
+	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/mcpserver"
 )
 
@@ -19,20 +20,22 @@ type Dependencies struct {
 	StoragePath       string
 	Database          ReadyChecker
 	DB                *sql.DB
+	DatabaseURL       string
 	CookieSecure      bool
 	AttachmentMaxSize int64
 }
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
+	gate := &maintenance.Gate{}
 	mux.HandleFunc("GET /health/live", liveHandler)
 	mux.HandleFunc("GET /health/ready", readyHandler(deps.StoragePath, deps.Database))
 	if deps.DB != nil {
-		registerAPI(mux, deps)
+		registerAPI(mux, deps, gate)
 		mux.Handle("/mcp", mcpserver.NewHandler(deps.DB))
 	}
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/mcp/", http.NotFoundHandler())
 	mux.Handle("/", frontend.Handler())
-	return middleware(deps.Logger, mux)
+	return middleware(deps.Logger, gate.Middleware(mux))
 }
