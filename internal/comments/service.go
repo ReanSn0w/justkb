@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -53,8 +55,8 @@ func (s *Service) list(ctx context.Context, cardID, epicID string) ([]Comment, e
 		SELECT c.id,c.card_id,c.epic_id,c.author_user_id,c.author_token_id,c.body,c.created_at,c.updated_at,
 		       u.id,u.display_name,u.avatar_url
 		FROM comments c JOIN users u ON u.id=c.author_user_id
-		WHERE ($1 <> '' AND c.card_id=NULLIF($1,'')::uuid)
-		   OR ($2 <> '' AND c.epic_id=NULLIF($2,'')::uuid)
+		WHERE ($1 <> '' AND c.card_id=NULLIF($1,''))
+		   OR ($2 <> '' AND c.epic_id=NULLIF($2,''))
 		ORDER BY c.created_at,c.id`, cardID, epicID)
 	if err != nil {
 		return nil, err
@@ -100,17 +102,20 @@ func (s *Service) create(ctx context.Context, cardID, epicID string, actor Actor
 	if actor.TokenID != "" {
 		tokenID = actor.TokenID
 	}
+	commentID := ids.New()
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO comments(id,card_id,epic_id,author_user_id,author_token_id,body)
+		VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,$5,$6)`,
+		commentID, cardID, epicID, actor.UserID, tokenID, body,
+	); err != nil {
+		return Comment{}, err
+	}
 	var item Comment
 	err := s.db.QueryRowContext(ctx, `
-		WITH inserted AS (
-			INSERT INTO comments(card_id,epic_id,author_user_id,author_token_id,body)
-			VALUES(NULLIF($1,'')::uuid,NULLIF($2,'')::uuid,$3,$4,$5)
-			RETURNING *
-		)
 		SELECT c.id,c.card_id,c.epic_id,c.author_user_id,c.author_token_id,c.body,c.created_at,c.updated_at,
 		       u.id,u.display_name,u.avatar_url
-		FROM inserted c JOIN users u ON u.id=c.author_user_id`,
-		cardID, epicID, actor.UserID, tokenID, body,
+		FROM comments c JOIN users u ON u.id=c.author_user_id
+		WHERE c.id=$1`, commentID,
 	).Scan(&item.ID, &item.CardID, &item.EpicID, &item.AuthorUserID, &item.AuthorTokenID,
 		&item.Body, &item.CreatedAt, &item.UpdatedAt, &item.Author.ID, &item.Author.DisplayName, &item.Author.AvatarURL)
 	if err != nil {

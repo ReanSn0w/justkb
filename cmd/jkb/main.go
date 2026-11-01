@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 	connectContext, cancelConnect := context.WithTimeout(context.Background(), 10*time.Second)
-	db, err := database.Open(connectContext, cfg.DatabaseURL)
+	db, err := database.Open(connectContext, cfg.DatabasePath)
 	cancelConnect()
 	if err != nil {
 		logger.Error("connect database", "error", err)
@@ -40,7 +40,7 @@ func main() {
 		StoragePath:       cfg.StoragePath,
 		Database:          db,
 		DB:                db,
-		DatabaseURL:       cfg.DatabaseURL,
+		DatabasePath:      cfg.DatabasePath,
 		SystemName:        cfg.SystemName,
 		CookieSecure:      cfg.CookieSecure,
 		AttachmentMaxSize: cfg.AttachmentMaxSize,

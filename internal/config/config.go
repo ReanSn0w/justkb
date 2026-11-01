@@ -11,7 +11,7 @@ import (
 
 type Config struct {
 	ListenAddress     string
-	DatabaseURL       string
+	DatabasePath      string
 	StoragePath       string
 	SystemName        string
 	PublicURL         string
@@ -23,8 +23,8 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{
 		ListenAddress:     envOrDefault("JKB_LISTEN_ADDRESS", ":8080"),
-		DatabaseURL:       strings.TrimSpace(os.Getenv("JKB_DATABASE_URL")),
-		StoragePath:       envOrDefault("JKB_STORAGE_PATH", "./storage"),
+		DatabasePath:      envOrDefault("JKB_DATABASE_PATH", "./storage/jkb.sqlite"),
+		StoragePath:       envOrDefault("JKB_STORAGE_PATH", "./storage/files"),
 		SystemName:        envOrDefault("JKB_SYSTEM_NAME", "JKB"),
 		PublicURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("JKB_PUBLIC_URL")), "/"),
 		CookieSecure:      true,
@@ -54,8 +54,8 @@ func Load() (Config, error) {
 		cfg.AttachmentMaxSize = value
 	}
 
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("JKB_DATABASE_URL is required")
+	if cfg.DatabasePath == "" {
+		return Config{}, errors.New("JKB_DATABASE_PATH is required")
 	}
 	if cfg.StoragePath == "" {
 		return Config{}, errors.New("JKB_STORAGE_PATH is required")

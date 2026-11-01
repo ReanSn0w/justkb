@@ -19,6 +19,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/comments"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
@@ -49,7 +50,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 	if err != nil {
 		panic(err)
 	}
-	backupService, err := backups.NewService(deps.DB, deps.DatabaseURL, deps.StoragePath, gate)
+	backupService, err := backups.NewService(deps.DB, deps.DatabasePath, deps.StoragePath, gate)
 	if err != nil {
 		panic(err)
 	}
@@ -802,6 +803,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case appdb.IsBusy(err):
+		status, code, message = http.StatusServiceUnavailable, "database_busy", "Database is busy; retry the request"
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
 	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, avatars.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
@@ -820,8 +823,6 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "invalid_backup", "Backup archive is invalid"
 	case errors.Is(err, backups.ErrSchemaMismatch):
 		status, code, message = http.StatusConflict, "backup_schema_mismatch", "Backup schema version does not match"
-	case errors.Is(err, backups.ErrUnavailable):
-		status, code, message = http.StatusServiceUnavailable, "backup_unavailable", "PostgreSQL backup tools are unavailable"
 	}
 	writeAPIError(w, r, status, code, message, nil)
 }

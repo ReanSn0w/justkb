@@ -2,7 +2,6 @@ package backups
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"database/sql"
@@ -13,16 +12,17 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"modernc.org/sqlite"
 )
 
 const (
 	Format           = "jkb-backup"
-	FormatVersion    = 1
+	FormatVersion    = 2
 	MaxUploadSize    = int64(2 << 30)
 	maxExtractedSize = int64(4 << 30)
 )
@@ -30,7 +30,6 @@ const (
 var (
 	ErrInvalidArchive = errors.New("invalid JKB backup archive")
 	ErrSchemaMismatch = errors.New("backup schema version does not match current database")
-	ErrUnavailable    = errors.New("PostgreSQL backup tools are unavailable")
 )
 
 type exclusiveGate interface {
@@ -53,16 +52,19 @@ type Archive struct {
 func (a Archive) Close() error { return os.RemoveAll(a.workDir) }
 
 type Service struct {
-	db          *sql.DB
-	databaseURL string
-	storageRoot string
-	gate        exclusiveGate
-	pgDump      string
-	pgRestore   string
-	now         func() time.Time
+	db           *sql.DB
+	databasePath string
+	storageRoot  string
+	gate         exclusiveGate
+	now          func() time.Time
+	restore      func(context.Context, string) error
 }
 
-func NewService(db *sql.DB, databaseURL, storageRoot string, gate exclusiveGate) (*Service, error) {
+func NewService(db *sql.DB, databasePath, storageRoot string, gate exclusiveGate) (*Service, error) {
+	databasePath, err := filepath.Abs(databasePath)
+	if err != nil {
+		return nil, err
+	}
 	root, err := filepath.Abs(storageRoot)
 	if err != nil {
 		return nil, err
@@ -73,10 +75,11 @@ func NewService(db *sql.DB, databaseURL, storageRoot string, gate exclusiveGate)
 	if err := os.MkdirAll(root, 0o750); err != nil {
 		return nil, err
 	}
-	return &Service{
-		db: db, databaseURL: databaseURL, storageRoot: root, gate: gate,
-		pgDump: "pg_dump", pgRestore: "pg_restore", now: time.Now,
-	}, nil
+	service := &Service{
+		db: db, databasePath: databasePath, storageRoot: root, gate: gate, now: time.Now,
+	}
+	service.restore = service.restoreDatabase
+	return service, nil
 }
 
 func (s *Service) Create(ctx context.Context) (Archive, error) {
@@ -105,8 +108,8 @@ func (s *Service) createLocked(ctx context.Context) (Archive, error) {
 	if err != nil {
 		return Archive{}, err
 	}
-	dumpPath := filepath.Join(workDir, "database.dump")
-	if err := s.dumpDatabase(ctx, workDir, dumpPath); err != nil {
+	dumpPath := filepath.Join(workDir, "database.sqlite")
+	if err := s.snapshotDatabase(ctx, dumpPath); err != nil {
 		return Archive{}, err
 	}
 	manifest := Manifest{Format: Format, Version: FormatVersion, CreatedAt: createdAt, SchemaVersion: schemaVersion}
@@ -129,6 +132,13 @@ func (s *Service) Restore(ctx context.Context, source io.Reader) error {
 	if err != nil {
 		return err
 	}
+	snapshotVersion, err := validateSQLiteSnapshot(ctx, dumpPath)
+	if err != nil {
+		return err
+	}
+	if snapshotVersion != manifest.SchemaVersion {
+		return fmt.Errorf("%w: manifest=%d snapshot=%d", ErrInvalidArchive, manifest.SchemaVersion, snapshotVersion)
+	}
 	return s.gate.Exclusive(func() error {
 		currentVersion, err := s.schemaVersion(ctx)
 		if err != nil {
@@ -137,8 +147,8 @@ func (s *Service) Restore(ctx context.Context, source io.Reader) error {
 		if manifest.SchemaVersion != currentVersion {
 			return fmt.Errorf("%w: backup=%d current=%d", ErrSchemaMismatch, manifest.SchemaVersion, currentVersion)
 		}
-		rollbackDump := filepath.Join(workDir, "rollback.dump")
-		if err := s.dumpDatabase(ctx, workDir, rollbackDump); err != nil {
+		rollbackDump := filepath.Join(workDir, "rollback.sqlite")
+		if err := s.snapshotDatabase(ctx, rollbackDump); err != nil {
 			return fmt.Errorf("create rollback database snapshot: %w", err)
 		}
 		previousStorage := filepath.Join(workDir, "previous-storage")
@@ -149,9 +159,9 @@ func (s *Service) Restore(ctx context.Context, source io.Reader) error {
 			_ = os.Rename(previousStorage, s.storageRoot)
 			return fmt.Errorf("publish restored storage: %w", err)
 		}
-		if err := s.restoreDatabase(ctx, workDir, dumpPath); err != nil {
+		if err := s.restore(ctx, dumpPath); err != nil {
 			fileRollbackErr := rollbackStorage(s.storageRoot, previousStorage)
-			databaseRollbackErr := s.restoreDatabase(ctx, workDir, rollbackDump)
+			databaseRollbackErr := s.restore(ctx, rollbackDump)
 			return errors.Join(fmt.Errorf("restore database: %w", err), fileRollbackErr, databaseRollbackErr)
 		}
 		_ = os.RemoveAll(previousStorage)
@@ -165,89 +175,100 @@ func (s *Service) schemaVersion(ctx context.Context) (int64, error) {
 	return version, err
 }
 
-func (s *Service) dumpDatabase(ctx context.Context, workDir, target string) error {
-	dsn, environment, err := s.postgresEnvironment(workDir)
+func (s *Service) snapshotDatabase(ctx context.Context, target string) error {
+	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return withSQLiteConnection(ctx, s.db, func(connection sqliteBackupConnection) error {
+		backup, err := connection.NewBackup(sqliteURI(target, "rwc"))
+		if err != nil {
+			return err
+		}
+		if _, err := backup.Step(-1); err != nil {
+			_ = backup.Finish()
+			return err
+		}
+		if err := backup.Finish(); err != nil {
+			return err
+		}
+		_, err = validateSQLiteSnapshot(ctx, target)
+		return err
+	})
+}
+
+func (s *Service) restoreDatabase(ctx context.Context, source string) error {
+	if _, err := validateSQLiteSnapshot(ctx, source); err != nil {
+		return err
+	}
+	if err := withSQLiteConnection(ctx, s.db, func(connection sqliteBackupConnection) error {
+		backup, err := connection.NewRestore(sqliteURI(source, "ro"))
+		if err != nil {
+			return err
+		}
+		if _, err := backup.Step(-1); err != nil {
+			_ = backup.Finish()
+			return err
+		}
+		return backup.Finish()
+	}); err != nil {
+		return err
+	}
+	return checkDatabase(ctx, s.db)
+}
+
+type sqliteBackupConnection interface {
+	NewBackup(string) (*sqlite.Backup, error)
+	NewRestore(string) (*sqlite.Backup, error)
+}
+
+func withSQLiteConnection(ctx context.Context, db *sql.DB, operation func(sqliteBackupConnection) error) error {
+	connection, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	return runCommand(ctx, s.pgDump, environment,
-		"--dbname", dsn,
-		"--format=custom",
-		"--data-only",
-		"--exclude-table=public.goose_db_version",
-		"--no-owner",
-		"--no-privileges",
-		"--file", target,
-	)
+	defer connection.Close()
+	return connection.Raw(func(raw any) error {
+		sqliteConnection, ok := raw.(sqliteBackupConnection)
+		if !ok {
+			return errors.New("SQLite connection does not support online backup")
+		}
+		return operation(sqliteConnection)
+	})
 }
 
-func (s *Service) restoreDatabase(ctx context.Context, workDir, source string) error {
-	if _, err := s.db.ExecContext(ctx, `
-		TRUNCATE comments,card_activity,api_tokens,web_sessions,attachments,card_tags,cards,
-		group_members,users,epics,tags,board_columns,user_groups RESTART IDENTITY CASCADE`); err != nil {
-		return err
-	}
-	dsn, environment, err := s.postgresEnvironment(workDir)
+func validateSQLiteSnapshot(ctx context.Context, source string) (int64, error) {
+	db, err := sql.Open("sqlite", sqliteURI(source, "ro"))
 	if err != nil {
+		return 0, fmt.Errorf("%w: open SQLite snapshot: %v", ErrInvalidArchive, err)
+	}
+	defer db.Close()
+	if err := checkDatabase(ctx, db); err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrInvalidArchive, err)
+	}
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(max(version_id),0) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil {
+		return 0, fmt.Errorf("%w: schema metadata: %v", ErrInvalidArchive, err)
+	}
+	return version, nil
+}
+
+func checkDatabase(ctx context.Context, db *sql.DB) error {
+	var result string
+	if err := db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&result); err != nil {
 		return err
 	}
-	return runCommand(ctx, s.pgRestore, environment,
-		"--dbname", dsn,
-		"--data-only",
-		"--disable-triggers",
-		"--no-owner",
-		"--no-privileges",
-		source,
-	)
-}
-
-func (s *Service) postgresEnvironment(workDir string) (string, []string, error) {
-	parsed, err := url.Parse(s.databaseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" || parsed.User == nil {
-		return "", nil, errors.New("invalid PostgreSQL URL")
-	}
-	username := parsed.User.Username()
-	password, hasPassword := parsed.User.Password()
-	parsed.User = url.User(username)
-	environment := os.Environ()
-	if hasPassword {
-		port := parsed.Port()
-		if port == "" {
-			port = "5432"
-		}
-		database := strings.TrimPrefix(parsed.Path, "/")
-		pgpass := strings.Join([]string{
-			escapePGPass(parsed.Hostname()), escapePGPass(port), escapePGPass(database),
-			escapePGPass(username), escapePGPass(password),
-		}, ":") + "\n"
-		pgpassPath := filepath.Join(workDir, ".pgpass")
-		if err := os.WriteFile(pgpassPath, []byte(pgpass), 0o600); err != nil {
-			return "", nil, err
-		}
-		environment = append(environment, "PGPASSFILE="+pgpassPath)
-	}
-	return parsed.String(), environment, nil
-}
-
-func runCommand(ctx context.Context, name string, environment []string, arguments ...string) error {
-	if _, err := exec.LookPath(name); err != nil {
-		return ErrUnavailable
-	}
-	command := exec.CommandContext(ctx, name, arguments...)
-	command.Env = environment
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	if err := command.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if len(message) > 500 {
-			message = message[:500]
-		}
-		if message != "" {
-			return fmt.Errorf("%s failed: %w: %s", name, err, message)
-		}
-		return fmt.Errorf("%s failed: %w", name, err)
+	if result != "ok" {
+		return fmt.Errorf("SQLite quick_check: %s", result)
 	}
 	return nil
+}
+
+func sqliteURI(filePath, mode string) string {
+	uri := &url.URL{Scheme: "file", Path: filepath.ToSlash(filePath)}
+	query := uri.Query()
+	query.Set("mode", mode)
+	uri.RawQuery = query.Encode()
+	return uri.String()
 }
 
 func writeArchive(target, dumpPath, storageRoot string, manifest Manifest) error {
@@ -269,7 +290,7 @@ func writeArchive(target, dumpPath, storageRoot string, manifest Manifest) error
 		err = writeBytes(tarWriter, "manifest.json", manifestJSON)
 	}
 	if err == nil {
-		err = writeFile(tarWriter, dumpPath, "database.dump")
+		err = writeFile(tarWriter, dumpPath, "database.sqlite")
 	}
 	if err == nil {
 		err = filepath.WalkDir(storageRoot, func(current string, entry fs.DirEntry, walkErr error) error {
@@ -330,7 +351,7 @@ func extractArchive(source io.Reader, workDir string) (Manifest, string, string,
 		if name == "." || path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") {
 			return Manifest{}, "", "", ErrInvalidArchive
 		}
-		if name != "manifest.json" && name != "database.dump" && name != "storage" && !strings.HasPrefix(name, "storage/") {
+		if name != "manifest.json" && name != "database.sqlite" && name != "storage" && !strings.HasPrefix(name, "storage/") {
 			return Manifest{}, "", "", ErrInvalidArchive
 		}
 		if seen[name] {
@@ -372,7 +393,7 @@ func extractArchive(source io.Reader, workDir string) (Manifest, string, string,
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil || manifest.Format != Format || manifest.Version != FormatVersion {
 		return Manifest{}, "", "", ErrInvalidArchive
 	}
-	dumpPath := filepath.Join(workDir, "database.dump")
+	dumpPath := filepath.Join(workDir, "database.sqlite")
 	storagePath := filepath.Join(workDir, "storage")
 	if info, err := os.Stat(dumpPath); err != nil || !info.Mode().IsRegular() {
 		return Manifest{}, "", "", ErrInvalidArchive
@@ -416,9 +437,4 @@ func rollbackStorage(current, previous string) error {
 		return fmt.Errorf("restore previous storage: %w", err)
 	}
 	return nil
-}
-
-func escapePGPass(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	return strings.ReplaceAll(value, ":", `\:`)
 }

@@ -2,30 +2,17 @@ package board
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
 func TestReferenceDataIntegration(t *testing.T) {
-	url := os.Getenv("JKB_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("JKB_TEST_DATABASE_URL is not set")
-	}
-	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testdb.Open(t).DB
 	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, `TRUNCATE card_activity, api_tokens, web_sessions, attachments, card_tags, cards, group_members, users, user_groups, epics, tags RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatal(err)
-	}
 	service := NewService(db)
 	group, err := service.SaveGroup(ctx, "", "Backend", "#3366FF", nil)
 	if err != nil {

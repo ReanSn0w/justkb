@@ -14,6 +14,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/comments"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 	mcpAuth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -409,6 +410,8 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	code := "internal_error"
 	details := map[string]any{}
 	switch {
+	case appdb.IsBusy(err):
+		code = "database_busy"
 	case errors.Is(err, cards.ErrNotFound), errors.Is(err, board.ErrNotFound), errors.Is(err, comments.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, cards.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, comments.ErrValidation):

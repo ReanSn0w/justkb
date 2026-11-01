@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	appdb "github.com/ReanSn0w/justkb/internal/database"
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -58,7 +61,7 @@ func (s *Service) Login(ctx context.Context, username, password string, ttl time
 	var user User
 	var passwordHash string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, username, display_name, email, avatar_url, role::text, is_active, password_hash
+		SELECT id, username, display_name, email, avatar_url, role, is_active, password_hash
 		FROM users WHERE lower(username) = lower($1)`, username,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &passwordHash)
 	if err != nil || !user.IsActive || !VerifyPassword(passwordHash, password) {
@@ -77,8 +80,8 @@ func (s *Service) Login(ctx context.Context, username, password string, ttl time
 		return Session{}, err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO web_sessions (user_id, token_digest, csrf_digest, expires_at)
-		VALUES ($1, $2, $3, $4)`, user.ID, tokenDigest[:], csrfSecret, s.now().Add(ttl))
+		INSERT INTO web_sessions (id, user_id, token_digest, csrf_digest, expires_at)
+		VALUES ($1, $2, $3, $4, $5)`, ids.New(), user.ID, tokenDigest[:], csrfSecret, s.now().Add(ttl))
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)
 	}
@@ -90,7 +93,7 @@ func (s *Service) AuthenticateSession(ctx context.Context, token string) (Princi
 	var principal Principal
 	var csrfDigest []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role::text, u.is_active,
+		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active,
 		       s.id, s.csrf_digest
 		FROM web_sessions s
 		JOIN users u ON u.id = s.user_id
@@ -142,12 +145,12 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, userID, nextHash); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at=CURRENT_TIMESTAMP WHERE id = $1`, userID, nextHash); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id = $1`, userID); err != nil {
@@ -161,7 +164,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, displayName string)
 	if displayName == "" || len([]rune(displayName)) > 200 {
 		return User{}, ErrValidation
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name=$2,updated_at=now() WHERE id=$1 AND is_active`, userID, displayName)
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND is_active`, userID, displayName)
 	if err != nil {
 		return User{}, err
 	}
@@ -178,7 +181,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, displayName string)
 func (s *Service) UserByID(ctx context.Context, userID string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id,username,display_name,email,avatar_url,role::text,is_active
+		SELECT id,username,display_name,email,avatar_url,role,is_active
 		FROM users WHERE id=$1 AND is_active`, userID,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -198,9 +201,9 @@ func (s *Service) CreateAdmin(ctx context.Context, username, displayName, passwo
 	}
 	var user User
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO users (username, display_name, role, password_hash)
-		VALUES ($1, $2, 'admin', $3)
-		RETURNING id, username, display_name, email, avatar_url, role::text, is_active`, username, displayName, encoded,
+		INSERT INTO users (id, username, display_name, role, password_hash)
+		VALUES ($1, $2, $3, 'admin', $4)
+		RETURNING id, username, display_name, email, avatar_url, role, is_active`, ids.New(), username, displayName, encoded,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	return user, err
 }

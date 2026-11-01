@@ -2,18 +2,17 @@ package mcpserver
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/board"
+	"github.com/ReanSn0w/justkb/internal/testdb"
 	"github.com/ReanSn0w/justkb/internal/tokens"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -30,28 +29,19 @@ func (t bearerTransport) RoundTrip(request *http.Request) (*http.Response, error
 }
 
 func TestMCPIntegration(t *testing.T) {
-	url := os.Getenv("JKB_TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("JKB_TEST_DATABASE_URL is not set")
-	}
-	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testdb.Open(t).DB
 	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, `TRUNCATE card_activity,api_tokens,web_sessions,attachments,card_tags,cards,group_members,users,user_groups,epics,tags RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatal(err)
-	}
 	user, err := auth.NewService(db).CreateAdmin(ctx, "admin", "Admin", "correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var groupID string
-	if err := db.QueryRowContext(ctx, `INSERT INTO user_groups(name,color) VALUES('Backend','#00d1b2') RETURNING id`).Scan(&groupID); err != nil {
+	boardService := board.NewService(db)
+	group, err := boardService.SaveGroup(ctx, "", "Backend", "#00d1b2", nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO group_members(group_id,user_id) VALUES($1,$2)`, groupID, user.ID); err != nil {
+	groupID := group.ID
+	if err := boardService.SetUserGroups(ctx, user.ID, []string{groupID}); err != nil {
 		t.Fatal(err)
 	}
 	created, err := tokens.NewService(db).Create(ctx, user.ID, "mcp test", []string{"cards:read", "cards:write"}, nil)
@@ -113,7 +103,7 @@ func TestMCPIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var secondColumnID string
-	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position OFFSET 1 LIMIT 1`).Scan(&secondColumnID); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position LIMIT 1 OFFSET 1`).Scan(&secondColumnID); err != nil {
 		t.Fatal(err)
 	}
 	movedCard, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "move_card", Arguments: map[string]any{"card_id": cardID, "expected_version": 1, "target_column_id": secondColumnID}})

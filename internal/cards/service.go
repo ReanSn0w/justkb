@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	appdb "github.com/ReanSn0w/justkb/internal/database"
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -193,7 +196,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if actor.UserID == "" || strings.TrimSpace(input.Title) == "" || input.ColumnID == "" {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -202,22 +205,26 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 		return Card{}, err
 	}
 	var columnExists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1 FOR UPDATE`, input.ColumnID).Scan(&columnExists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&columnExists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Card{}, ErrValidation
 		}
 		return Card{}, err
 	}
 	var position string
-	if err := tx.QueryRowContext(ctx, `SELECT (COALESCE(max(position), 0) + 1000)::text FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(max(position), 0) + 1000 AS TEXT) FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
+		return Card{}, err
+	}
+	var number int64
+	if err := tx.QueryRowContext(ctx, `UPDATE card_number_sequence SET next_number=next_number+1 WHERE singleton=1 RETURNING next_number-1`).Scan(&number); err != nil {
 		return Card{}, err
 	}
 	var card Card
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO cards (title,description,column_id,epic_id,group_id,assignee_id,position,due_at,created_by)
-		VALUES ($1,$2,$3,NULLIF($4,'')::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7::numeric,$8,$9)
-		RETURNING id,number,title,description,column_id,epic_id,group_id,assignee_id,position::text,due_at,version,is_archived,created_by,created_at,updated_at`,
-		strings.TrimSpace(input.Title), input.Description, input.ColumnID, input.EpicID, input.GroupID, input.AssigneeID, position, input.DueAt, actor.UserID,
+		INSERT INTO cards (id,number,title,description,column_id,epic_id,group_id,assignee_id,position,due_at,created_by)
+		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),$9,$10,$11)
+		RETURNING id,number,title,description,column_id,epic_id,group_id,assignee_id,CAST(position AS TEXT),due_at,version,is_archived,created_by,created_at,updated_at`,
+		ids.New(), number, strings.TrimSpace(input.Title), input.Description, input.ColumnID, input.EpicID, input.GroupID, input.AssigneeID, position, input.DueAt, actor.UserID,
 	).Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt)
 	if err != nil {
 		return Card{}, err
@@ -235,7 +242,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 }
 
 func (s *Service) Get(ctx context.Context, idOrNumber string) (Card, error) {
-	query := cardSelect + ` WHERE c.id::text=$1`
+	query := cardSelect + ` WHERE c.id=$1`
 	argument := idOrNumber
 	if strings.HasPrefix(strings.ToUpper(idOrNumber), "JKB-") {
 		query = cardSelect + ` WHERE c.number=$1`
@@ -284,13 +291,10 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 	if strings.TrimSpace(filters.Query) != "" {
 		args = append(args, strings.TrimSpace(filters.Query))
 		index := len(args)
-		query += fmt.Sprintf(` AND (c.number::text=$%d OR to_tsvector('simple',c.title||' '||c.description) @@ plainto_tsquery('simple',$%d))`, index, index)
+		query += fmt.Sprintf(` AND (CAST(c.number AS TEXT)=$%d OR instr(lower(c.title||' '||c.description),lower($%d))>0)`, index, index)
 	}
-	if len(filters.TagIDs) > 0 {
-		args = append(args, filters.TagIDs)
-		index := len(args)
-		query += fmt.Sprintf(` AND (SELECT count(DISTINCT ct.tag_id) FROM card_tags ct WHERE ct.card_id=c.id AND ct.tag_id=ANY($%d::uuid[]))=$%d`, index, index+1)
-		args = append(args, len(filters.TagIDs))
+	for _, tagID := range filters.TagIDs {
+		add(` AND EXISTS(SELECT 1 FROM card_tags ct WHERE ct.card_id=c.id AND ct.tag_id=$%d)`, tagID)
 	}
 	if filters.Cursor != "" {
 		cursor, err := decodeCursor(filters.Cursor)
@@ -298,7 +302,7 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 			return Page{}, ErrValidation
 		}
 		args = append(args, cursor.ColumnPosition, cursor.Position, cursor.ID)
-		query += fmt.Sprintf(` AND (ordering_column.position,c.position,c.id) > ($%d,$%d::numeric,$%d::uuid)`, len(args)-2, len(args)-1, len(args))
+		query += fmt.Sprintf(` AND (ordering_column.position,c.position,c.id) > ($%d,CAST($%d AS REAL),$%d)`, len(args)-2, len(args)-1, len(args))
 	}
 	args = append(args, filters.Limit+1)
 	query += fmt.Sprintf(` ORDER BY ordering_column.position,c.position,c.id LIMIT $%d`, len(args))
@@ -335,7 +339,7 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if input.ExpectedVersion <= 0 {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -377,8 +381,8 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 		dueAt = *input.DueAt
 	}
 	result, err := tx.ExecContext(ctx, `
-		UPDATE cards SET title=$3,description=$4,epic_id=NULLIF($5,'')::uuid,group_id=NULLIF($6,'')::uuid,
-		assignee_id=NULLIF($7,'')::uuid,due_at=$8,version=version+1,updated_at=now()
+		UPDATE cards SET title=$3,description=$4,epic_id=NULLIF($5,''),group_id=NULLIF($6,''),
+		assignee_id=NULLIF($7,''),due_at=$8,version=version+1,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, title, description, epicID, groupID, assigneeID, dueAt)
 	if err != nil {
 		return Card{}, err
@@ -404,7 +408,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if input.ExpectedVersion <= 0 || input.TargetColumnID == "" || (input.BeforeCardID != "" && input.AfterCardID != "") {
 		return Card{}, ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -417,14 +421,14 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 		return Card{}, ErrVersionConflict
 	}
 	var exists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1 FOR UPDATE`, input.TargetColumnID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.TargetColumnID).Scan(&exists); err != nil {
 		return Card{}, ErrValidation
 	}
 	position, err := movePosition(ctx, tx, input.TargetColumnID, cardID, input.BeforeCardID, input.AfterCardID)
 	if err != nil {
 		return Card{}, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE cards SET column_id=$3,position=$4::numeric,version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, input.TargetColumnID, position)
+	result, err := tx.ExecContext(ctx, `UPDATE cards SET column_id=$3,position=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, input.TargetColumnID, position)
 	if err != nil {
 		return Card{}, err
 	}
@@ -441,7 +445,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 }
 
 func (s *Service) SetArchived(ctx context.Context, actor Actor, cardID string, expectedVersion int64, archived bool) (Card, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Card{}, err
 	}
@@ -453,7 +457,7 @@ func (s *Service) SetArchived(ctx context.Context, actor Actor, cardID string, e
 	if current.Version != expectedVersion {
 		return Card{}, ErrVersionConflict
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE cards SET is_archived=$3,version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, cardID, expectedVersion, archived)
+	result, err := tx.ExecContext(ctx, `UPDATE cards SET is_archived=$3,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, expectedVersion, archived)
 	if err != nil {
 		return Card{}, err
 	}
@@ -524,10 +528,10 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		LEFT JOIN users assignee ON assignee.id=card.assignee_id
 		LEFT JOIN epics project ON project.id=card.epic_id
 		LEFT JOIN user_groups card_group ON card_group.id=card.group_id
-		LEFT JOIN board_columns from_column ON from_column.id=(activity.changes->>'from_column_id')::uuid
-		LEFT JOIN board_columns to_column ON to_column.id=(activity.changes->>'to_column_id')::uuid
-		WHERE activity.action='moved' AND activity.created_at >= $1 AND activity.created_at < $2`
-	args := []any{filters.From, filters.To}
+		LEFT JOIN board_columns from_column ON from_column.id=json_extract(activity.changes,'$.from_column_id')
+		LEFT JOIN board_columns to_column ON to_column.id=json_extract(activity.changes,'$.to_column_id')
+		WHERE activity.action='moved' AND datetime(activity.created_at) >= datetime($1) AND datetime(activity.created_at) < datetime($2)`
+	args := []any{sqliteTime(filters.From), sqliteTime(filters.To)}
 	add := func(clause string, value any) {
 		args = append(args, value)
 		query += fmt.Sprintf(clause, len(args))
@@ -552,11 +556,11 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		if err != nil {
 			return MovementPage{}, ErrValidation
 		}
-		args = append(args, cursor.CreatedAt, cursor.ID)
-		query += fmt.Sprintf(` AND (activity.created_at,activity.id) < ($%d,$%d::uuid)`, len(args)-1, len(args))
+		args = append(args, sqliteTime(cursor.CreatedAt), cursor.ID)
+		query += fmt.Sprintf(` AND (datetime(activity.created_at),activity.id) < (datetime($%d),$%d)`, len(args)-1, len(args))
 	}
 	args = append(args, filters.Limit+1)
-	query += fmt.Sprintf(` ORDER BY activity.created_at DESC,activity.id DESC LIMIT $%d`, len(args))
+	query += fmt.Sprintf(` ORDER BY datetime(activity.created_at) DESC,activity.id DESC LIMIT $%d`, len(args))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -613,12 +617,12 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 }
 
 const cardSelect = `
-	SELECT c.id,c.number,c.title,c.description,c.column_id,c.epic_id,c.group_id,c.assignee_id,c.position::text,c.due_at,c.version,c.is_archived,c.created_by,c.created_at,c.updated_at,
-	COALESCE((SELECT json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY lower(t.name),t.id) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'::json),
-	COALESCE((SELECT json_agg(json_build_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',a.created_at) ORDER BY a.created_at,a.id) FROM attachments a WHERE a.card_id=c.id),'[]'::json),
-	(SELECT json_build_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
-	(SELECT json_build_object('id',g.id,'name',g.name) FROM user_groups g WHERE g.id=c.group_id),
-	(SELECT json_build_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id)
+	SELECT c.id,c.number,c.title,c.description,c.column_id,c.epic_id,c.group_id,c.assignee_id,CAST(c.position AS TEXT),c.due_at,c.version,c.is_archived,c.created_by,c.created_at,c.updated_at,
+	COALESCE((SELECT json_group_array(json_object('id',t.id,'name',t.name,'color',t.color)) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'),
+	COALESCE((SELECT json_group_array(json_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',strftime('%Y-%m-%dT%H:%M:%fZ',a.created_at))) FROM attachments a WHERE a.card_id=c.id),'[]'),
+	(SELECT json_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
+	(SELECT json_object('id',g.id,'name',g.name) FROM user_groups g WHERE g.id=c.group_id),
+	(SELECT json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id)
 	FROM cards c`
 
 type scanner interface{ Scan(...any) error }
@@ -662,7 +666,7 @@ func scanCard(row scanner) (Card, error) {
 }
 
 func getForUpdate(ctx context.Context, tx *sql.Tx, cardID string) (Card, error) {
-	row := tx.QueryRowContext(ctx, cardSelect+` WHERE c.id=$1 FOR UPDATE`, cardID)
+	row := tx.QueryRowContext(ctx, cardSelect+` WHERE c.id=$1`, cardID)
 	return scanCard(row)
 }
 
@@ -706,14 +710,14 @@ func recordActivity(ctx context.Context, tx *sql.Tx, actor Actor, cardID, action
 	if actor.TokenID != "" {
 		token = actor.TokenID
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO card_activity(card_id,actor_user_id,actor_token_id,action,changes) VALUES($1,$2,$3,$4,$5)`, cardID, actor.UserID, token, action, payload)
+	_, err = tx.ExecContext(ctx, `INSERT INTO card_activity(id,card_id,actor_user_id,actor_token_id,action,changes) VALUES($1,$2,$3,$4,$5,$6)`, ids.New(), cardID, actor.UserID, token, action, payload)
 	return err
 }
 
 func movePosition(ctx context.Context, tx *sql.Tx, columnID, excludeID, beforeID, afterID string) (string, error) {
 	if beforeID == "" && afterID == "" {
 		var result string
-		err := tx.QueryRowContext(ctx, `SELECT (COALESCE(max(position),0)+1000)::text FROM cards WHERE column_id=$1 AND id<>$2 AND NOT is_archived`, columnID, excludeID).Scan(&result)
+		err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(max(position),0)+1000 AS TEXT) FROM cards WHERE column_id=$1 AND id<>$2 AND NOT is_archived`, columnID, excludeID).Scan(&result)
 		return result, err
 	}
 	referenceID, direction := beforeID, "before"
@@ -721,12 +725,12 @@ func movePosition(ctx context.Context, tx *sql.Tx, columnID, excludeID, beforeID
 		referenceID, direction = afterID, "after"
 	}
 	var reference float64
-	if err := tx.QueryRowContext(ctx, `SELECT position::float8 FROM cards WHERE id=$1 AND column_id=$2 AND NOT is_archived`, referenceID, columnID).Scan(&reference); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT CAST(position AS REAL) FROM cards WHERE id=$1 AND column_id=$2 AND NOT is_archived`, referenceID, columnID).Scan(&reference); err != nil {
 		return "", ErrValidation
 	}
 	var neighbor sql.NullFloat64
 	if direction == "before" {
-		if err := tx.QueryRowContext(ctx, `SELECT max(position)::float8 FROM cards WHERE column_id=$1 AND id<>$2 AND position<$3`, columnID, excludeID, reference).Scan(&neighbor); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT max(CAST(position AS REAL)) FROM cards WHERE column_id=$1 AND id<>$2 AND position<$3`, columnID, excludeID, reference).Scan(&neighbor); err != nil {
 			return "", err
 		}
 		if neighbor.Valid {
@@ -735,7 +739,7 @@ func movePosition(ctx context.Context, tx *sql.Tx, columnID, excludeID, beforeID
 			reference -= 1000
 		}
 	} else {
-		if err := tx.QueryRowContext(ctx, `SELECT min(position)::float8 FROM cards WHERE column_id=$1 AND id<>$2 AND position>$3`, columnID, excludeID, reference).Scan(&neighbor); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT min(CAST(position AS REAL)) FROM cards WHERE column_id=$1 AND id<>$2 AND position>$3`, columnID, excludeID, reference).Scan(&neighbor); err != nil {
 			return "", err
 		}
 		if neighbor.Valid {
@@ -752,6 +756,10 @@ func value(pointer *string) string {
 		return ""
 	}
 	return *pointer
+}
+
+func sqliteTime(value time.Time) string {
+	return value.UTC().Format("2006-01-02 15:04:05.999999999")
 }
 
 type listCursor struct {

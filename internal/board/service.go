@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
+	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
 var (
@@ -70,10 +72,10 @@ func NewService(db *sql.DB) *Service { return &Service{db: db} }
 
 func (s *Service) ListUsers(ctx context.Context, includeInactive bool, groupID string) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role::text, u.is_active
+		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active
 		FROM users u
 		WHERE ($1 OR u.is_active) AND ($2 = '' OR EXISTS (
-			SELECT 1 FROM group_members gm WHERE gm.user_id = u.id AND gm.group_id = NULLIF($2, '')::uuid
+			SELECT 1 FROM group_members gm WHERE gm.user_id = u.id AND gm.group_id = NULLIF($2, '')
 		))
 		ORDER BY lower(u.display_name), u.id`, includeInactive, groupID)
 	if err != nil {
@@ -109,10 +111,10 @@ func (s *Service) CreateUser(ctx context.Context, username, displayName, email, 
 	}
 	var user User
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO users (username, display_name, email, role, password_hash)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, username, display_name, email, avatar_url, role::text, is_active`,
-		strings.TrimSpace(username), strings.TrimSpace(displayName), emailValue, role, passwordHash,
+		INSERT INTO users (id, username, display_name, email, role, password_hash)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, username, display_name, email, avatar_url, role, is_active`,
+		ids.New(), strings.TrimSpace(username), strings.TrimSpace(displayName), emailValue, role, passwordHash,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	user.GroupIDs = []string{}
 	return user, err
@@ -126,31 +128,21 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 	if strings.TrimSpace(email) != "" {
 		emailValue = strings.TrimSpace(email)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return User{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(1245651780)`); err != nil {
-		return User{}, err
-	}
 	var currentRole string
 	var currentActive bool
-	if err := tx.QueryRowContext(ctx, `SELECT role::text,is_active FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT role,is_active FROM users WHERE id=$1`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	} else if err != nil {
 		return User{}, err
 	}
 	if currentRole == "admin" && currentActive && (role != "admin" || !active) {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE role='admin' AND is_active FOR UPDATE`)
-		if err != nil {
-			return User{}, err
-		}
-		adminCount := 0
-		for rows.Next() {
-			adminCount++
-		}
-		if err := rows.Close(); err != nil {
+		var adminCount int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE role='admin' AND is_active`).Scan(&adminCount); err != nil {
 			return User{}, err
 		}
 		if adminCount <= 1 {
@@ -159,9 +151,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 	}
 	var user User
 	err = tx.QueryRowContext(ctx, `
-		UPDATE users SET display_name = $2, email = $3, role = $4, is_active = $5, updated_at = now()
+		UPDATE users SET display_name = $2, email = $3, role = $4, is_active = $5, updated_at=CURRENT_TIMESTAMP
 		WHERE id = $1
-		RETURNING id, username, display_name, email, avatar_url, role::text, is_active`,
+		RETURNING id, username, display_name, email, avatar_url, role, is_active`,
 		id, strings.TrimSpace(displayName), emailValue, role, active,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	if err != nil {
@@ -186,7 +178,7 @@ func (s *Service) UserByUsername(ctx context.Context, username string) (User, er
 	}
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id,username,display_name,email,avatar_url,role::text,is_active
+		SELECT id,username,display_name,email,avatar_url,role,is_active
 		FROM users WHERE lower(username)=lower($1)`, username,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -211,7 +203,7 @@ func (s *Service) SetUserActiveByUsername(ctx context.Context, username string, 
 }
 
 func (s *Service) SetUserGroups(ctx context.Context, userID string, groupIDs []string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
@@ -237,12 +229,12 @@ func (s *Service) ResetUserPassword(ctx context.Context, userID, password string
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1`, userID, hash)
+	result, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at=CURRENT_TIMESTAMP WHERE id = $1`, userID, hash)
 	if err != nil {
 		return err
 	}
@@ -293,9 +285,9 @@ func (s *Service) SaveGroup(ctx context.Context, id, name, color string, descrip
 	var group Group
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO user_groups (name, color, description) VALUES ($1, $2, $3) RETURNING id, name, color, description`, strings.TrimSpace(name), color, description).Scan(&group.ID, &group.Name, &group.Color, &group.Description)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO user_groups (id, name, color, description) VALUES ($1, $2, $3, $4) RETURNING id, name, color, description`, ids.New(), strings.TrimSpace(name), color, description).Scan(&group.ID, &group.Name, &group.Color, &group.Description)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE user_groups SET name=$2, color=$3, description=$4, updated_at=now() WHERE id=$1 RETURNING id, name, color, description`, id, strings.TrimSpace(name), color, description).Scan(&group.ID, &group.Name, &group.Color, &group.Description)
+		err = s.db.QueryRowContext(ctx, `UPDATE user_groups SET name=$2, color=$3, description=$4, updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id, name, color, description`, id, strings.TrimSpace(name), color, description).Scan(&group.ID, &group.Name, &group.Color, &group.Description)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
@@ -327,9 +319,9 @@ func (s *Service) SaveColumn(ctx context.Context, id, name string, wipLimit *int
 	var column Column
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO board_columns (name, position, wip_limit) VALUES ($1, COALESCE((SELECT max(position) + 100 FROM board_columns), 100), $2) RETURNING id, name, position, wip_limit`, strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO board_columns (id, name, position, wip_limit) VALUES ($1, $2, COALESCE((SELECT max(position) + 100 FROM board_columns), 100), $3) RETURNING id, name, position, wip_limit`, ids.New(), strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE board_columns SET name=$2, wip_limit=$3, updated_at=now() WHERE id=$1 RETURNING id, name, position, wip_limit`, id, strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
+		err = s.db.QueryRowContext(ctx, `UPDATE board_columns SET name=$2, wip_limit=$3, updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id, name, position, wip_limit`, id, strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Column{}, ErrNotFound
@@ -355,16 +347,16 @@ func (s *Service) ReorderColumns(ctx context.Context, ids []string) error {
 	if strings.Join(wanted, ",") != strings.Join(existing, ",") {
 		return ErrValidation
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE board_columns SET position = position + 1000000, updated_at = now()`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE board_columns SET position = position + 1000000, updated_at=CURRENT_TIMESTAMP`); err != nil {
 		return err
 	}
 	for index, id := range ids {
-		if _, err := tx.ExecContext(ctx, `UPDATE board_columns SET position = $2, updated_at = now() WHERE id = $1`, id, (index+1)*100); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE board_columns SET position = $2, updated_at=CURRENT_TIMESTAMP WHERE id = $1`, id, (index+1)*100); err != nil {
 			return err
 		}
 	}
@@ -432,9 +424,9 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 	var epic Epic
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO epics (name, description, color, is_archived) VALUES ($1,$2,$3,$4) RETURNING id,name,description,color,is_archived,created_at,updated_at`, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO epics (id, name, description, color, is_archived) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,description,color,is_archived,created_at,updated_at`, ids.New(), strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,updated_at=now() WHERE id=$1 RETURNING id,name,description,color,is_archived,created_at,updated_at`, id, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
+		err = s.db.QueryRowContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,name,description,color,is_archived,created_at,updated_at`, id, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Epic{}, ErrNotFound
@@ -466,9 +458,9 @@ func (s *Service) SaveTag(ctx context.Context, id, name, color string) (Tag, err
 	var tag Tag
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO tags (name,color) VALUES ($1,$2) RETURNING id,name,color`, strings.TrimSpace(name), color).Scan(&tag.ID, &tag.Name, &tag.Color)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO tags (id,name,color) VALUES ($1,$2,$3) RETURNING id,name,color`, ids.New(), strings.TrimSpace(name), color).Scan(&tag.ID, &tag.Name, &tag.Color)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE tags SET name=$2,color=$3,updated_at=now() WHERE id=$1 RETURNING id,name,color`, id, strings.TrimSpace(name), color).Scan(&tag.ID, &tag.Name, &tag.Color)
+		err = s.db.QueryRowContext(ctx, `UPDATE tags SET name=$2,color=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,name,color`, id, strings.TrimSpace(name), color).Scan(&tag.ID, &tag.Name, &tag.Color)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Tag{}, ErrNotFound
