@@ -27,7 +27,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := goose.SetDialect("sqlite3"); err != nil {
 		log.Fatal(err)
 	}
 
