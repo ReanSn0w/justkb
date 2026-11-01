@@ -14,6 +14,8 @@ import {
   type User,
 } from '../api'
 
+const minimumRefreshDuration = 400
+
 export const useBoardStore = defineStore('board', () => {
   const columns = ref<BoardColumn[]>([]),
     cards = ref<Card[]>([]),
@@ -22,8 +24,10 @@ export const useBoardStore = defineStore('board', () => {
     users = ref<User[]>([]),
     tags = ref<Tag[]>([])
   const loading = ref(false),
+    refreshing = ref(false),
     error = ref(''),
     filters = ref<CardFilters>({})
+  let refreshSequence = 0
   const byColumn = computed(() =>
     Object.fromEntries(
       columns.value.map((column) => [
@@ -48,26 +52,46 @@ export const useBoardStore = defineStore('board', () => {
     users.value = u.items.filter((x) => x.is_active)
     tags.value = t.items
   }
+  async function fetchCards(activeFilters: CardFilters) {
+    const result = await cardsApi.list({ ...activeFilters, limit: 100 })
+    const items = [...result.items]
+    let cursor = result.next_cursor
+    while (cursor) {
+      const page = await cardsApi.list({ ...activeFilters, limit: 100, cursor })
+      items.push(...page.items)
+      cursor = page.next_cursor
+    }
+    return items
+  }
   async function loadCards() {
+    const sequence = ++refreshSequence
+    const startedAt = Date.now()
+    const activeFilters = { ...filters.value }
+    refreshing.value = true
+    try {
+      const items = await fetchCards(activeFilters)
+      const remaining = minimumRefreshDuration - (Date.now() - startedAt)
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining))
+      if (sequence !== refreshSequence) return true
+      cards.value = items
+      return true
+    } catch {
+      return sequence !== refreshSequence
+    } finally {
+      if (sequence === refreshSequence) refreshing.value = false
+    }
+  }
+  async function initialize() {
     loading.value = true
     error.value = ''
     try {
-      const result = await cardsApi.list({ ...filters.value, limit: 100 })
-      cards.value = result.items
-      let cursor = result.next_cursor
-      while (cursor) {
-        const page = await cardsApi.list({ ...filters.value, limit: 100, cursor })
-        cards.value.push(...page.items)
-        cursor = page.next_cursor
-      }
+      const [, items] = await Promise.all([loadDirectories(), fetchCards({ ...filters.value })])
+      cards.value = items
     } catch {
       error.value = 'Не удалось загрузить доску'
     } finally {
       loading.value = false
     }
-  }
-  async function initialize() {
-    await Promise.all([loadDirectories(), loadCards()])
   }
   async function create(column_id: string, title: string) {
     const epicID = filters.value.epic_id
@@ -104,6 +128,7 @@ export const useBoardStore = defineStore('board', () => {
     users,
     tags,
     loading,
+    refreshing,
     error,
     filters,
     byColumn,

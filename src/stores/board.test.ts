@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardsApi, directoryApi, epicsApi, type Card } from '../api'
 import { useBoardStore } from './board'
 vi.mock('../api', async () => {
@@ -31,6 +31,7 @@ const card = {
   updated_at: '',
 } as Card
 describe('board store', () => {
+  afterEach(() => vi.useRealTimers())
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
@@ -74,5 +75,32 @@ describe('board store', () => {
       column_id: 'a',
       epic_id: 'project-1',
     })
+  })
+  it('keeps the current board visible during a readable refresh state', async () => {
+    vi.useFakeTimers()
+    const store = useBoardStore()
+    store.cards = [structuredClone(card)]
+    vi.mocked(cardsApi.list).mockResolvedValue({
+      items: [{ ...card, id: '2', title: 'Filtered result' }],
+      next_cursor: null,
+    })
+
+    const refresh = store.loadCards()
+    await vi.advanceTimersByTimeAsync(399)
+    expect(store.refreshing).toBe(true)
+    expect(store.cards[0]?.title).toBe('A')
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(refresh).resolves.toBe(true)
+    expect(store.refreshing).toBe(false)
+    expect(store.cards[0]?.title).toBe('Filtered result')
+  })
+  it('preserves visible cards when a refresh fails', async () => {
+    const store = useBoardStore()
+    store.cards = [structuredClone(card)]
+    vi.mocked(cardsApi.list).mockRejectedValue(new Error('network'))
+
+    await expect(store.loadCards()).resolves.toBe(false)
+    expect(store.cards[0]?.title).toBe('A')
+    expect(store.refreshing).toBe(false)
   })
 })

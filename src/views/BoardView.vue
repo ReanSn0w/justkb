@@ -12,6 +12,7 @@ import type { Card } from '../api'
 import { filtersFromQuery, queryFromFilters } from '../features/filters'
 const board = useBoardStore(),
   toasts = useToastStore(),
+  initialized = ref(false),
   dragged = ref<Card | null>(null),
   draft = ref<Record<string, string>>({}),
   route = useRoute(),
@@ -19,12 +20,20 @@ const board = useBoardStore(),
 onMounted(async () => {
   board.filters = filtersFromQuery(route.query)
   await board.initialize()
+  initialized.value = true
 })
 const applyFilters = useDebounceFn(async () => {
+  if (!initialized.value) return
   await router.replace({ query: queryFromFilters(board.filters) })
-  await board.loadCards()
+  if (!(await board.loadCards())) toasts.show('Не удалось обновить задачи', 'error')
 }, 250)
-watch(() => board.filters, applyFilters, { deep: true })
+watch(
+  () => board.filters,
+  () => {
+    if (initialized.value) void applyFilters()
+  },
+  { deep: true },
+)
 async function add(column: string) {
   const title = draft.value[column]?.trim()
   if (!title) return

@@ -14,7 +14,14 @@ function toggleTag(id: string) {
 </script>
 <template>
   <aside class="box p-4" aria-label="Фильтры доски">
-    <h2 class="title is-5">Фильтры</h2>
+    <header class="level is-mobile mb-4">
+      <div class="level-left">
+        <h2 class="title is-5 mb-0">Фильтры</h2>
+      </div>
+      <div class="level-right">
+        <span v-if="board.refreshing" class="tag is-primary" aria-live="polite"> Обновляем… </span>
+      </div>
+    </header>
     <div class="field is-grouped is-grouped-multiline">
       <div class="control is-expanded">
         <input
