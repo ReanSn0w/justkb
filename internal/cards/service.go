@@ -213,7 +213,7 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 		return Card{}, err
 	}
 	var position string
-	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(max(position), 0) + 1000 AS TEXT) FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(min(position) - 1000, 1000) AS TEXT) FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
 		return Card{}, err
 	}
 	var number int64
