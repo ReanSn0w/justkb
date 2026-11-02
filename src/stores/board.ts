@@ -10,9 +10,11 @@ import {
   type CardFilters,
   type Epic,
   type Group,
+  type MoveCardInput,
   type Tag,
   type User,
 } from '../api'
+import { compareCardPositions } from '../features/card-order'
 
 const minimumRefreshDuration = 400
 
@@ -41,7 +43,7 @@ export const useBoardStore = defineStore('board', () => {
         column.id,
         cards.value
           .filter((card) => card.column_id === column.id)
-          .sort((a, b) => a.position.localeCompare(b.position)),
+          .sort((a, b) => compareCardPositions(a.position, b.position)),
       ]),
     ),
   )
@@ -109,14 +111,18 @@ export const useBoardStore = defineStore('board', () => {
     cards.value.push(card)
     return card
   }
-  async function move(card: Card, target_column_id: string, before_card_id?: string) {
+  async function move(
+    card: Card,
+    target_column_id: string,
+    reference: Pick<MoveCardInput, 'before_card_id' | 'after_card_id'> = {},
+  ) {
     const previous = { column_id: card.column_id, position: card.position, version: card.version }
     card.column_id = target_column_id
     try {
       const updated = await cardsApi.move(card.id, {
         expected_version: previous.version,
         target_column_id,
-        before_card_id,
+        ...reference,
       })
       Object.assign(card, updated)
     } catch (cause) {

@@ -53,17 +53,36 @@ describe('board store', () => {
     await store.initialize()
     expect(store.byColumn.a?.[0]?.title).toBe('A')
   })
+  it('orders numeric position strings numerically', () => {
+    const store = useBoardStore()
+    store.columns = [{ id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' }]
+    store.cards = [
+      { ...card, id: '10', position: '10000' },
+      { ...card, id: '2', position: '2.5' },
+      { ...card, id: '1', position: '-1000' },
+    ]
+    expect(store.byColumn.a?.map((item) => item.id)).toEqual(['1', '2', '10'])
+  })
   it('sends version when moving', async () => {
     vi.mocked(cardsApi.move).mockResolvedValue({ ...card, column_id: 'b', version: 2 })
     const store = useBoardStore()
     store.cards = [structuredClone(card)]
-    await store.move(store.cards[0]!, 'b')
+    await store.move(store.cards[0]!, 'b', { before_card_id: '2' })
     expect(cardsApi.move).toHaveBeenCalledWith('1', {
       expected_version: 1,
       target_column_id: 'b',
-      before_card_id: undefined,
+      before_card_id: '2',
     })
     expect(store.cards[0]?.version).toBe(2)
+  })
+  it('restores the card and rejects when a move fails', async () => {
+    vi.mocked(cardsApi.move).mockRejectedValue(new Error('network'))
+    const store = useBoardStore()
+    store.cards = [structuredClone(card)]
+    const current = store.cards[0]!
+
+    await expect(store.move(current, 'b', { after_card_id: '2' })).rejects.toThrow('network')
+    expect(current).toMatchObject({ column_id: 'a', position: 'a', version: 1 })
   })
   it('assigns quick-created cards to the filtered project', async () => {
     vi.mocked(cardsApi.create).mockResolvedValue({ ...card, epic_id: 'project-1' })

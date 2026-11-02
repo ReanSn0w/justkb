@@ -5,6 +5,7 @@ import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
 import BackupSettings from '../components/admin/BackupSettings.vue'
+import ColorTag from '../components/ui/ColorTag.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
 type Tab = DirectoryTab | 'backup'
@@ -27,6 +28,7 @@ const users = ref<User[]>([]),
   error = ref(''),
   renaming = ref<{ kind: RenameKind; item: RenameItem } | null>(null),
   renameName = ref(''),
+  renameColor = ref('#00d1b2'),
   renameError = ref(''),
   renameBusy = ref(false),
   renameInput = ref<HTMLInputElement | null>(null),
@@ -108,6 +110,7 @@ async function moveColumn(index: number, delta: number) {
 function startRename(kind: RenameKind, item: RenameItem) {
   renaming.value = { kind, item }
   renameName.value = item.name
+  if ('color' in item) renameColor.value = item.color
   renameError.value = ''
   void nextTick(() => renameInput.value?.focus())
 }
@@ -126,7 +129,7 @@ async function saveRename() {
       const group = current.item as Group
       await directoryApi.updateGroup(group.id, {
         name: value,
-        color: group.color,
+        color: renameColor.value,
         description: group.description,
       })
     } else if (current.kind === 'columns') {
@@ -134,13 +137,13 @@ async function saveRename() {
       await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
     } else {
       const tag = current.item as Tag
-      await directoryApi.updateTag(tag.id, { name: value, color: tag.color })
+      await directoryApi.updateTag(tag.id, { name: value, color: renameColor.value })
     }
     await load()
     renaming.value = null
-    toasts.show('Название обновлено')
+    toasts.show('Запись обновлена')
   } catch {
-    renameError.value = 'Не удалось изменить название'
+    renameError.value = 'Не удалось изменить запись'
   } finally {
     renameBusy.value = false
   }
@@ -212,11 +215,11 @@ async function saveRename() {
         <template v-else-if="tab === 'groups'">
           <article v-for="item in groups" :key="item.id" class="media">
             <div class="media-content">
-              <span class="tag is-primary">{{ item.name }}</span>
+              <ColorTag :color="item.color">{{ item.name }}</ColorTag>
             </div>
             <div class="media-right">
               <button class="button is-small" type="button" @click="startRename('groups', item)">
-                Переименовать
+                Редактировать
               </button>
             </div>
           </article>
@@ -231,7 +234,7 @@ async function saveRename() {
                 <button class="button" @click="moveColumn(index, -1)">↑</button>
                 <button class="button" @click="moveColumn(index, 1)">↓</button>
                 <button class="button" type="button" @click="startRename('columns', item)">
-                  Переименовать
+                  Редактировать
                 </button>
                 <button
                   class="button is-danger"
@@ -246,11 +249,11 @@ async function saveRename() {
         <template v-else-if="tab === 'tags'">
           <article v-for="item in tags" :key="item.id" class="media">
             <div class="media-content">
-              <span class="tag is-info">{{ item.name }}</span>
+              <ColorTag :color="item.color">{{ item.name }}</ColorTag>
             </div>
             <div class="media-right">
               <button class="button is-small" type="button" @click="startRename('tags', item)">
-                Переименовать
+                Редактировать
               </button>
             </div>
           </article>
@@ -272,7 +275,7 @@ async function saveRename() {
         <div class="modal-background" @click="cancelRename" />
         <div class="modal-card">
           <header class="modal-card-head">
-            <h2 class="modal-card-title">Переименовать</h2>
+            <h2 class="modal-card-title">Редактировать</h2>
             <button class="delete" type="button" aria-label="Закрыть" @click="cancelRename" />
           </header>
           <form @submit.prevent="saveRename">
@@ -289,14 +292,23 @@ async function saveRename() {
                   :disabled="renameBusy"
                 />
               </BaseField>
+              <BaseField v-if="renaming.kind !== 'columns'" label="Цвет">
+                <input v-model="renameColor" class="input" type="color" :disabled="renameBusy" />
+              </BaseField>
             </section>
             <footer class="modal-card-foot">
-              <button class="button is-primary" type="submit" :class="{ 'is-loading': renameBusy }">
-                Сохранить
-              </button>
-              <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
-                Отмена
-              </button>
+              <div class="buttons mb-0">
+                <button
+                  class="button is-primary"
+                  type="submit"
+                  :class="{ 'is-loading': renameBusy }"
+                >
+                  Сохранить
+                </button>
+                <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
+                  Отмена
+                </button>
+              </div>
             </footer>
           </form>
         </div>

@@ -1,17 +1,12 @@
 <script setup lang="ts">
 import type { Card } from '../../api'
 import UserAvatar from '../user/UserAvatar.vue'
+import ColorTag from '../ui/ColorTag.vue'
 defineProps<{ card: Card }>()
-defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
+defineEmits<{ move: [direction: -1 | 1] }>()
 </script>
 <template>
-  <article
-    class="card mb-4"
-    draggable="true"
-    tabindex="0"
-    :aria-label="`JKB-${card.number}: ${card.title}`"
-    @dragstart="$emit('drag', card)"
-  >
+  <article class="card mb-4" tabindex="0" :aria-label="`JKB-${card.number}: ${card.title}`">
     <div class="card-content p-4">
       <RouterLink :to="`/cards/${card.id}`">
         <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
@@ -19,14 +14,16 @@ defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
       </RouterLink>
       <div class="tags mt-4 mb-2">
         <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
-        <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
+        <ColorTag v-if="card.group" :color="card.group.color">{{ card.group.name }}</ColorTag>
         <span v-if="card.assignee" class="tag is-info">
           <UserAvatar :user="card.assignee" :size="24" />
           <span class="ml-1">{{ card.assignee.display_name }}</span>
         </span>
       </div>
       <div v-if="card.tags.length" class="tags mb-3">
-        <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">{{ tag.name }}</span>
+        <ColorTag v-for="tag in card.tags" :key="tag.id" :color="tag.color">
+          {{ tag.name }}
+        </ColorTag>
       </div>
       <div class="buttons are-small is-right mb-0">
         <button

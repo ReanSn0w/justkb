@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useBoardStore } from '../../stores/board'
+import ColorTag from '../ui/ColorTag.vue'
 const board = useBoardStore()
 const active = computed(() =>
   Object.values(board.filters).some((value) =>
@@ -79,19 +80,18 @@ function toggleTag(id: string) {
       </div>
     </div>
     <div v-if="board.tags.length" class="tags">
-      <button
+      <ColorTag
         v-for="tag in board.tags"
         :key="tag.id"
-        type="button"
-        :class="[
-          'tag',
-          'is-medium',
-          board.filters.tag_ids?.includes(tag.id) ? 'is-info' : undefined,
-        ]"
+        as="button"
+        class="is-medium"
+        :color="tag.color"
+        :selected="board.filters.tag_ids?.includes(tag.id)"
+        :aria-pressed="board.filters.tag_ids?.includes(tag.id)"
         @click="toggleTag(tag.id)"
       >
         {{ tag.name }}
-      </button>
+      </ColorTag>
     </div>
   </aside>
 </template>

@@ -30,24 +30,29 @@ func TestCardLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagID := tag.ID
-	service := NewService(db)
-	actor := Actor{UserID: user.ID}
-	card, err := service.Create(ctx, actor, CreateInput{Title: "Fix login", ColumnID: firstColumn, TagIDs: []string{tagID}})
+	group, err := board.NewService(db).SaveGroup(ctx, "", "Backend", "#3366FF", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card.Number != 1 || len(card.TagIDs) != 1 || len(card.Tags) != 1 || card.Tags[0].Name != "bug" || card.Version != 1 {
+	service := NewService(db)
+	actor := Actor{UserID: user.ID}
+	card, err := service.Create(ctx, actor, CreateInput{Title: "Fix login", ColumnID: firstColumn, GroupID: group.ID, TagIDs: []string{tagID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card.Number != 1 || len(card.TagIDs) != 1 || len(card.Tags) != 1 || card.Tags[0].Name != "bug" || card.Group == nil || card.Group.Color != "#3366FF" || card.Version != 1 {
 		t.Fatalf("card = %#v", card)
 	}
-	if _, err := service.Create(ctx, actor, CreateInput{Title: "Second tagged card", ColumnID: firstColumn, TagIDs: []string{tagID}}); err != nil {
+	second, err := service.Create(ctx, actor, CreateInput{Title: "Second tagged card", ColumnID: firstColumn, TagIDs: []string{tagID}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	page, err := service.List(ctx, Filters{TagIDs: []string{tagID}, Limit: 1})
-	if err != nil || len(page.Items) != 1 || page.NextCursor == "" {
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != second.ID || page.NextCursor == "" {
 		t.Fatalf("page=%#v err=%v", page, err)
 	}
 	nextPage, err := service.List(ctx, Filters{TagIDs: []string{tagID}, Limit: 1, Cursor: page.NextCursor})
-	if err != nil || len(nextPage.Items) != 1 || nextPage.Items[0].ID == page.Items[0].ID {
+	if err != nil || len(nextPage.Items) != 1 || nextPage.Items[0].ID != card.ID {
 		t.Fatalf("next page=%#v err=%v", nextPage, err)
 	}
 	title := "Fix secure login"
@@ -81,5 +86,71 @@ func TestCardLifecycleIntegration(t *testing.T) {
 	activity, err := service.Activity(ctx, card.ID, 20)
 	if err != nil || len(activity) != 5 {
 		t.Fatalf("activity=%#v err=%v", activity, err)
+	}
+}
+
+func TestCardOrderingIntegration(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	user, err := auth.NewService(db).CreateAdmin(ctx, "order-admin", "Order Admin", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstColumn, secondColumn string
+	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position LIMIT 1`).Scan(&firstColumn); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT id FROM board_columns ORDER BY position LIMIT 1 OFFSET 1`).Scan(&secondColumn); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	actor := Actor{UserID: user.ID}
+	first, err := service.Create(ctx, actor, CreateInput{Title: "First", ColumnID: firstColumn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Create(ctx, actor, CreateInput{Title: "Second", ColumnID: firstColumn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := service.Create(ctx, actor, CreateInput{Title: "Third", ColumnID: firstColumn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.List(ctx, Filters{ColumnID: firstColumn, Limit: 2})
+	if err != nil || len(page.Items) != 2 || page.Items[0].ID != third.ID || page.Items[1].ID != second.ID || page.NextCursor == "" {
+		t.Fatalf("first page=%#v err=%v", page, err)
+	}
+	nextPage, err := service.List(ctx, Filters{ColumnID: firstColumn, Limit: 2, Cursor: page.NextCursor})
+	if err != nil || len(nextPage.Items) != 1 || nextPage.Items[0].ID != first.ID {
+		t.Fatalf("next page=%#v err=%v", nextPage, err)
+	}
+
+	moved, err := service.Move(ctx, actor, first.ID, MoveInput{
+		ExpectedVersion: first.Version,
+		TargetColumnID:  secondColumn,
+	})
+	if err != nil || moved.ColumnID != secondColumn {
+		t.Fatalf("move between columns=%#v err=%v", moved, err)
+	}
+	moved, err = service.Move(ctx, actor, first.ID, MoveInput{
+		ExpectedVersion: moved.Version,
+		TargetColumnID:  firstColumn,
+		BeforeCardID:    third.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err = service.Move(ctx, actor, first.ID, MoveInput{
+		ExpectedVersion: moved.Version,
+		TargetColumnID:  firstColumn,
+		AfterCardID:     second.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered, err := service.List(ctx, Filters{ColumnID: firstColumn, Limit: 10})
+	if err != nil || len(ordered.Items) != 3 || ordered.Items[0].ID != third.ID || ordered.Items[1].ID != second.ID || ordered.Items[2].ID != first.ID {
+		t.Fatalf("ordered=%#v err=%v", ordered, err)
 	}
 }

@@ -163,7 +163,7 @@ onMounted(load)
           >
             Создать
           </BaseButton>
-          <BaseButton class="ml-2" tone="quiet" :disabled="creating" @click="closeCreateDialog">
+          <BaseButton tone="quiet" :disabled="creating" @click="closeCreateDialog">
             Отмена
           </BaseButton>
         </template>

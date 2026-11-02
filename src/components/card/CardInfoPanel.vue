@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Card } from '../../api'
+import ColorTag from '../ui/ColorTag.vue'
 import UserAvatar from '../user/UserAvatar.vue'
 
 defineProps<{ card: Card; columnName: string }>()
@@ -27,7 +28,7 @@ defineProps<{ card: Card; columnName: string }>()
       <div class="mb-4">
         <dt class="has-text-grey is-size-7 mb-1">Команда</dt>
         <dd>
-          <span v-if="card.group" class="tag is-primary">{{ card.group.name }}</span>
+          <ColorTag v-if="card.group" :color="card.group.color">{{ card.group.name }}</ColorTag>
           <span v-else>Не указана</span>
         </dd>
       </div>
@@ -54,9 +55,9 @@ defineProps<{ card: Card; columnName: string }>()
         <dt class="has-text-grey is-size-7 mb-2">Теги</dt>
         <dd>
           <div v-if="card.tags.length" class="tags mb-0">
-            <span v-for="tag in card.tags" :key="tag.id" class="tag is-info">
+            <ColorTag v-for="tag in card.tags" :key="tag.id" :color="tag.color">
               {{ tag.name }}
-            </span>
+            </ColorTag>
           </div>
           <span v-else>Нет тегов</span>
         </dd>
