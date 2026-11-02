@@ -30,13 +30,17 @@ func TestCardLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	tagID := tag.ID
-	service := NewService(db)
-	actor := Actor{UserID: user.ID}
-	card, err := service.Create(ctx, actor, CreateInput{Title: "Fix login", ColumnID: firstColumn, TagIDs: []string{tagID}})
+	group, err := board.NewService(db).SaveGroup(ctx, "", "Backend", "#3366FF", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card.Number != 1 || len(card.TagIDs) != 1 || len(card.Tags) != 1 || card.Tags[0].Name != "bug" || card.Version != 1 {
+	service := NewService(db)
+	actor := Actor{UserID: user.ID}
+	card, err := service.Create(ctx, actor, CreateInput{Title: "Fix login", ColumnID: firstColumn, GroupID: group.ID, TagIDs: []string{tagID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card.Number != 1 || len(card.TagIDs) != 1 || len(card.Tags) != 1 || card.Tags[0].Name != "bug" || card.Group == nil || card.Group.Color != "#3366FF" || card.Version != 1 {
 		t.Fatalf("card = %#v", card)
 	}
 	if _, err := service.Create(ctx, actor, CreateInput{Title: "Second tagged card", ColumnID: firstColumn, TagIDs: []string{tagID}}); err != nil {

@@ -43,8 +43,9 @@ type CardEpic struct {
 }
 
 type CardGroup struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
 }
 
 type CardAssignee struct {
@@ -621,7 +622,7 @@ const cardSelect = `
 	COALESCE((SELECT json_group_array(json_object('id',t.id,'name',t.name,'color',t.color)) FROM card_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.card_id=c.id),'[]'),
 	COALESCE((SELECT json_group_array(json_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',strftime('%Y-%m-%dT%H:%M:%fZ',a.created_at))) FROM attachments a WHERE a.card_id=c.id),'[]'),
 	(SELECT json_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
-	(SELECT json_object('id',g.id,'name',g.name) FROM user_groups g WHERE g.id=c.group_id),
+	(SELECT json_object('id',g.id,'name',g.name,'color',g.color) FROM user_groups g WHERE g.id=c.group_id),
 	(SELECT json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id)
 	FROM cards c`
 

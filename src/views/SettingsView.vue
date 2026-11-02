@@ -5,6 +5,7 @@ import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
 import BackupSettings from '../components/admin/BackupSettings.vue'
+import ColorTag from '../components/ui/ColorTag.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
 type Tab = DirectoryTab | 'backup'
@@ -212,7 +213,7 @@ async function saveRename() {
         <template v-else-if="tab === 'groups'">
           <article v-for="item in groups" :key="item.id" class="media">
             <div class="media-content">
-              <span class="tag is-primary">{{ item.name }}</span>
+              <ColorTag :color="item.color">{{ item.name }}</ColorTag>
             </div>
             <div class="media-right">
               <button class="button is-small" type="button" @click="startRename('groups', item)">
@@ -246,7 +247,7 @@ async function saveRename() {
         <template v-else-if="tab === 'tags'">
           <article v-for="item in tags" :key="item.id" class="media">
             <div class="media-content">
-              <span class="tag is-info">{{ item.name }}</span>
+              <ColorTag :color="item.color">{{ item.name }}</ColorTag>
             </div>
             <div class="media-right">
               <button class="button is-small" type="button" @click="startRename('tags', item)">
