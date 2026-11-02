@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
+import Sortable, { type SortableEvent } from 'sortablejs'
 import { useBoardStore } from '../stores/board'
 import CardTile from '../components/board/CardTile.vue'
 import BoardFilters from '../components/board/BoardFilters.vue'
@@ -10,17 +11,24 @@ import BaseButton from '../components/ui/BaseButton.vue'
 import { useToastStore } from '../stores/toasts'
 import type { Card } from '../api'
 import { filtersFromQuery, queryFromFilters } from '../features/filters'
+import { cardMoveReference } from '../features/card-order'
 const board = useBoardStore(),
   toasts = useToastStore(),
   initialized = ref(false),
-  dragged = ref<Card | null>(null),
   draft = ref<Record<string, string>>({}),
   route = useRoute(),
   router = useRouter()
+let sortables: Sortable[] = []
 onMounted(async () => {
   board.filters = filtersFromQuery(route.query)
   await board.initialize()
   initialized.value = true
+  await nextTick()
+  initializeSorting()
+})
+onUnmounted(() => {
+  sortables.forEach((sortable) => sortable.destroy())
+  sortables = []
 })
 const applyFilters = useDebounceFn(async () => {
   if (!initialized.value) return
@@ -54,23 +62,39 @@ async function add(column: string) {
     toasts.show('Не удалось создать карточку', 'error')
   }
 }
-async function drop(column: string, before?: string) {
-  if (!dragged.value) return
+async function reordered(event: SortableEvent) {
+  const cardID = (event.item as HTMLElement).dataset.cardId
+  const columnID = (event.to as HTMLElement).dataset.columnId
+  if (!cardID || !columnID || (event.from === event.to && event.oldIndex === event.newIndex)) return
+  const card = board.cards.find((item) => item.id === cardID)
+  if (!card) return
   try {
-    await board.move(dragged.value, column, before)
+    await board.move(card, columnID, cardMoveReference(event.item as HTMLElement))
   } catch {
+    board.cards = []
+    await nextTick()
+    await board.loadCards()
     toasts.show('Карточка изменилась. Доска обновлена.', 'error')
-  } finally {
-    dragged.value = null
   }
+}
+function initializeSorting() {
+  sortables.forEach((sortable) => sortable.destroy())
+  sortables = Array.from(document.querySelectorAll<HTMLElement>('[data-card-list]')).map(
+    (element) =>
+      new Sortable(element, {
+        group: 'board-cards',
+        animation: 150,
+        draggable: '[data-card-id]',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
+        onEnd: (event) => void reordered(event),
+      }),
+  )
 }
 async function keyboard(card: Card, direction: -1 | 1) {
   const index = board.columns.findIndex((c) => c.id === card.column_id),
     target = board.columns[index + direction]
-  if (target) {
-    dragged.value = card
-    await drop(target.id)
-  }
+  if (target) await board.move(card, target.id)
 }
 </script>
 <template>
@@ -96,7 +120,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
           :key="column.id"
           class="column is-11-mobile is-6-tablet is-4-desktop is-3-widescreen is-flex-shrink-0"
         >
-          <section class="box p-4" @dragover.prevent @drop="drop(column.id)">
+          <section class="box p-4">
             <header class="level is-mobile mb-4">
               <div class="level-left">
                 <h2 class="title is-5 mb-0">{{ column.name }}</h2>
@@ -121,14 +145,9 @@ async function keyboard(card: Card, direction: -1 | 1) {
                 <button class="button is-primary" aria-label="Создать карточку">+</button>
               </div>
             </form>
-            <div>
-              <div
-                v-for="card in board.byColumn[column.id]"
-                :key="card.id"
-                @dragover.prevent.stop
-                @drop.stop="drop(column.id, card.id)"
-              >
-                <CardTile :card="card" @drag="dragged = $event" @move="keyboard(card, $event)" />
+            <div data-card-list :data-column-id="column.id">
+              <div v-for="card in board.byColumn[column.id]" :key="card.id" :data-card-id="card.id">
+                <CardTile :card="card" @move="keyboard(card, $event)" />
               </div>
               <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
             </div>

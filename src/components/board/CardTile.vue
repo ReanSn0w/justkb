@@ -3,16 +3,10 @@ import type { Card } from '../../api'
 import UserAvatar from '../user/UserAvatar.vue'
 import ColorTag from '../ui/ColorTag.vue'
 defineProps<{ card: Card }>()
-defineEmits<{ drag: [card: Card]; move: [direction: -1 | 1] }>()
+defineEmits<{ move: [direction: -1 | 1] }>()
 </script>
 <template>
-  <article
-    class="card mb-4"
-    draggable="true"
-    tabindex="0"
-    :aria-label="`JKB-${card.number}: ${card.title}`"
-    @dragstart="$emit('drag', card)"
-  >
+  <article class="card mb-4" tabindex="0" :aria-label="`JKB-${card.number}: ${card.title}`">
     <div class="card-content p-4">
       <RouterLink :to="`/cards/${card.id}`">
         <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
