@@ -11,7 +11,9 @@ const emit = defineEmits<{ close: [] }>()
         <button class="delete" aria-label="Закрыть" @click="emit('close')"></button>
       </header>
       <section class="modal-card-body"><slot /></section>
-      <footer v-if="$slots.actions" class="modal-card-foot"><slot name="actions" /></footer>
+      <footer v-if="$slots.actions" class="modal-card-foot">
+        <div class="buttons mb-0"><slot name="actions" /></div>
+      </footer>
     </div>
   </div>
 </template>

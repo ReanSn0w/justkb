@@ -297,12 +297,18 @@ async function saveRename() {
               </BaseField>
             </section>
             <footer class="modal-card-foot">
-              <button class="button is-primary" type="submit" :class="{ 'is-loading': renameBusy }">
-                Сохранить
-              </button>
-              <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
-                Отмена
-              </button>
+              <div class="buttons mb-0">
+                <button
+                  class="button is-primary"
+                  type="submit"
+                  :class="{ 'is-loading': renameBusy }"
+                >
+                  Сохранить
+                </button>
+                <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
+                  Отмена
+                </button>
+              </div>
             </footer>
           </form>
         </div>

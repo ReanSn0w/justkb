@@ -56,6 +56,7 @@ describe('settings directories', () => {
 
     const input = wrapper.get<HTMLInputElement>('.modal input')
     expect(input.element.value).toBe('Backlog')
+    expect(wrapper.get('.modal-card-foot > .buttons').findAll('button')).toHaveLength(2)
     await input.setValue('Очередь')
     await wrapper.get('.modal form').trigger('submit')
     await flushPromises()
