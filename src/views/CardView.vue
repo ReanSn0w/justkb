@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError, cardsApi, type Activity, type Card } from '../api'
 import { useBoardStore } from '../stores/board'
 import { useToastStore } from '../stores/toasts'
+import { prepared } from '../features/view-transitions'
+import { boardReturnURL } from '../features/filters'
 import { renderMarkdown } from '../features/markdown'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
@@ -15,10 +17,17 @@ const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
   toasts = useToastStore(),
-  card = ref<Card | null>(null),
+  card = ref<Card | null>(
+    prepared.card?.id === String(route.params.id) ? structuredClone(prepared.card) : null,
+  ),
   activity = ref<Activity[]>([]),
-  loading = ref(true),
+  loading = ref(!card.value),
   error = ref('')
+const returnTo = computed(() => boardReturnURL(route.query.return_to))
+const cardLocation = (id: string, edit = false) => ({
+  path: `/cards/${id}${edit ? '/edit' : ''}`,
+  query: { return_to: returnTo.value },
+})
 const html = computed(() => renderMarkdown(card.value?.description || ''))
 const editing = computed(() => route.name === 'card-edit')
 const columnName = computed(
@@ -27,7 +36,10 @@ const columnName = computed(
 onMounted(async () => {
   try {
     if (!board.columns.length) await board.initialize()
-    card.value = await cardsApi.get(String(route.params.id))
+    card.value =
+      prepared.card?.id === String(route.params.id)
+        ? structuredClone(prepared.card)
+        : await cardsApi.get(String(route.params.id))
     activity.value = (await cardsApi.activity(card.value.id)).items
   } catch {
     error.value = 'Карточка не найдена или недоступна'
@@ -48,7 +60,7 @@ async function save() {
       due_at: card.value.due_at,
     })
     toasts.show('Карточка сохранена')
-    await router.push(`/cards/${card.value.id}`)
+    await router.push(cardLocation(card.value.id))
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
       error.value = 'Карточка уже изменена другим участником. Перезагрузите данные.'
@@ -69,7 +81,7 @@ async function cancelEdit() {
   if (!card.value) return
   card.value = await cardsApi.get(card.value.id)
   error.value = ''
-  await router.push(`/cards/${card.value.id}`)
+  await router.push(cardLocation(card.value.id))
 }
 function toggleTag(id: string) {
   if (!card.value) return
@@ -88,7 +100,7 @@ function toggleTag(id: string) {
       <template v-else-if="card">
         <header class="level">
           <div class="level-left">
-            <button class="button" @click="editing ? cancelEdit() : router.push('/')">
+            <button class="button" @click="editing ? cancelEdit() : router.push(returnTo)">
               {{ editing ? '← Карточка' : '← Доска' }}
             </button>
           </div>
@@ -102,7 +114,7 @@ function toggleTag(id: string) {
               }}</BaseButton>
               <BaseButton @click="save">Сохранить</BaseButton>
             </div>
-            <BaseButton v-else @click="router.push(`/cards/${card.id}/edit`)">
+            <BaseButton v-else @click="router.push(cardLocation(card.id, true))">
               Редактировать
             </BaseButton>
           </div>
@@ -115,7 +127,12 @@ function toggleTag(id: string) {
           <div class="column is-two-thirds">
             <form v-if="editing" class="box" @submit.prevent="save">
               <BaseField label="Заголовок">
-                <input v-model.trim="card.title" class="input" required />
+                <input
+                  :data-transition-key="`card-${card.id}`"
+                  v-model.trim="card.title"
+                  class="input"
+                  required
+                />
               </BaseField>
               <BaseField label="Описание">
                 <textarea v-model="card.description" class="textarea" rows="12" />
@@ -176,7 +193,7 @@ function toggleTag(id: string) {
               </fieldset>
             </form>
             <article v-else class="box">
-              <h1 class="title">{{ card.title }}</h1>
+              <h1 :data-transition-key="`card-${card.id}`" class="title">{{ card.title }}</h1>
               <div v-if="card.description" class="content" v-html="html"></div>
               <StatusState v-else title="Описание пока не добавлено" />
               <hr />

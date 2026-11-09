@@ -42,6 +42,7 @@ func main() {
 		DB:                db,
 		DatabasePath:      cfg.DatabasePath,
 		SystemName:        cfg.SystemName,
+		IconColor:         cfg.IconColor,
 		CookieSecure:      cfg.CookieSecure,
 		AttachmentMaxSize: cfg.AttachmentMaxSize,
 	})

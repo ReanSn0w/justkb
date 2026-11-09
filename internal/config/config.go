@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ type Config struct {
 	DatabasePath      string
 	StoragePath       string
 	SystemName        string
+	IconColor         string
 	PublicURL         string
 	CookieSecure      bool
 	AttachmentMaxSize int64
@@ -26,6 +28,7 @@ func Load() (Config, error) {
 		DatabasePath:      envOrDefault("JKB_DATABASE_PATH", "./storage/jkb.sqlite"),
 		StoragePath:       envOrDefault("JKB_STORAGE_PATH", "./storage/files"),
 		SystemName:        envOrDefault("JKB_SYSTEM_NAME", "JKB"),
+		IconColor:         strings.ToUpper(envOrDefault("JKB_ICON_COLOR", "#2563EB")),
 		PublicURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("JKB_PUBLIC_URL")), "/"),
 		CookieSecure:      true,
 		AttachmentMaxSize: 25 << 20,
@@ -54,6 +57,9 @@ func Load() (Config, error) {
 		cfg.AttachmentMaxSize = value
 	}
 
+	if !regexp.MustCompile(`^#[0-9A-F]{6}$`).MatchString(cfg.IconColor) {
+		return Config{}, errors.New("JKB_ICON_COLOR must be #RRGGBB")
+	}
 	if cfg.DatabasePath == "" {
 		return Config{}, errors.New("JKB_DATABASE_PATH is required")
 	}

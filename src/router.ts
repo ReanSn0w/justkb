@@ -1,3 +1,4 @@
+import { installViewTransitions } from './features/view-transitions'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useSessionStore } from './stores/session'
 import { canAccessAdmin } from './features/authz'
@@ -58,3 +59,5 @@ router.beforeEach(async (to) => {
   if (to.meta.admin && !canAccessAdmin(session.user)) return { name: 'board' }
   if (to.name === 'login' && session.user) return { name: 'board' }
 })
+
+installViewTransitions(router)

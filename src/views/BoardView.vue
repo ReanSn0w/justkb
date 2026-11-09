@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDebounceFn } from '@vueuse/core'
+
 import Sortable, { type SortableEvent } from 'sortablejs'
 import { useBoardStore } from '../stores/board'
 import CardTile from '../components/board/CardTile.vue'
@@ -10,7 +10,7 @@ import StatusState from '../components/ui/StatusState.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import { useToastStore } from '../stores/toasts'
 import type { Card } from '../api'
-import { filtersFromQuery, queryFromFilters } from '../features/filters'
+import { filtersFromQuery, queryFromFilters, mergeFilterQuery } from '../features/filters'
 import { cardMoveReference } from '../features/card-order'
 const board = useBoardStore(),
   toasts = useToastStore(),
@@ -19,38 +19,56 @@ const board = useBoardStore(),
   route = useRoute(),
   router = useRouter()
 let sortables: Sortable[] = []
+let timer: ReturnType<typeof setTimeout> | undefined
+let alive = true
+let syncing = false
+const signature = () => JSON.stringify(queryFromFilters(board.filters))
+function scheduleLoad() {
+  clearTimeout(timer)
+  timer = setTimeout(async () => {
+    if (!alive) return
+    if (!(await board.loadCards())) toasts.show('Не удалось обновить задачи', 'error')
+  }, 250)
+}
+
 onMounted(async () => {
   board.filters = filtersFromQuery(route.query)
+  if (board.columns.length) {
+    initialized.value = true
+    await nextTick()
+    initializeSorting()
+  }
   await board.initialize()
+  if (!alive) return
   initialized.value = true
   await nextTick()
   initializeSorting()
 })
 onUnmounted(() => {
+  alive = false
+  clearTimeout(timer)
   sortables.forEach((sortable) => sortable.destroy())
   sortables = []
 })
-const applyFilters = useDebounceFn(async () => {
-  if (!initialized.value) return
-  const activeFilters = {
-    ...board.filters,
-    tag_ids: board.filters.tag_ids ? [...board.filters.tag_ids] : undefined,
-  }
-  const [loaded] = await Promise.all([
-    board.loadCards(activeFilters),
-    router.replace({ query: queryFromFilters(activeFilters) }).then(
-      () => true,
-      () => false,
-    ),
-  ])
-  if (!loaded) toasts.show('Не удалось обновить задачи', 'error')
-}, 250)
 watch(
   () => board.filters,
   () => {
-    if (initialized.value) void applyFilters()
+    if (!initialized.value || syncing || !alive) return
+    void router.replace({ query: mergeFilterQuery(route.query, board.filters) })
+    scheduleLoad()
   },
-  { deep: true },
+  { deep: true, flush: 'sync' },
+)
+watch(
+  () => route.query,
+  (query) => {
+    const filters = filtersFromQuery(query)
+    if (JSON.stringify(queryFromFilters(filters)) === signature()) return
+    syncing = true
+    board.filters = filters
+    syncing = false
+    if (initialized.value) scheduleLoad()
+  },
 )
 async function add(column: string) {
   const title = draft.value[column]?.trim()
@@ -112,7 +130,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
   <section v-else-if="!board.columns.length" class="section pt-0">
     <StatusState title="Нет колонок" detail="Администратор должен создать хотя бы одну колонку." />
   </section>
-  <div v-else class="is-overflow-x-auto" aria-label="Kanban-доска">
+  <div v-else data-board-scroll class="is-overflow-x-auto" aria-label="Kanban-доска">
     <section class="section pt-0">
       <div class="columns is-mobile is-variable is-4 is-flex-wrap-nowrap">
         <div

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { prepared } from '../features/view-transitions'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { epicsApi, type Epic } from '../api'
@@ -12,8 +13,8 @@ import { useToastStore } from '../stores/toasts'
 const router = useRouter()
 const session = useSessionStore()
 const toasts = useToastStore()
-const items = ref<Epic[]>([])
-const loading = ref(true)
+const items = ref<Epic[]>(prepared.projects ? structuredClone(prepared.projects) : [])
+const loading = ref(!prepared.projects)
 const error = ref('')
 const name = ref('')
 const description = ref('')
@@ -37,7 +38,7 @@ function taskLabel(count: number) {
 }
 
 async function load() {
-  loading.value = true
+  loading.value = !items.value.length
   error.value = ''
   try {
     items.value = (await epicsApi.list(session.user?.role === 'admin')).items
@@ -104,7 +105,9 @@ onMounted(load)
         >
           <div class="level mb-3">
             <div class="level-left">
-              <h2 class="title is-5 mb-0">{{ epic.name }}</h2>
+              <h2 :data-transition-key="`project-${epic.id}`" class="title is-5 mb-0">
+                {{ epic.name }}
+              </h2>
             </div>
             <div class="level-right">
               <div class="tags">

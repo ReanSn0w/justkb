@@ -24,7 +24,10 @@ vi.mock('sortablejs', () => ({
 }))
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
-  useRouter: () => ({ replace: vi.fn().mockResolvedValue(true) }),
+  useRouter: () => ({
+    replace: vi.fn().mockResolvedValue(true),
+    resolve: () => ({ fullPath: '/' }),
+  }),
 }))
 vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api')

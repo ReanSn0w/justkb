@@ -1,16 +1,31 @@
 <script setup lang="ts">
+import { useRoute, useRouter } from 'vue-router'
+import { useBoardStore } from '../../stores/board'
+import { mergeFilterQuery } from '../../features/filters'
 import type { Card } from '../../api'
 import UserAvatar from '../user/UserAvatar.vue'
 import ColorTag from '../ui/ColorTag.vue'
 defineProps<{ card: Card }>()
+const route = useRoute()
+const router = useRouter()
+const board = useBoardStore()
+function cardURL(id: string) {
+  const returnTo = router.resolve({
+    path: '/',
+    query: mergeFilterQuery(route.query, board.filters),
+  }).fullPath
+  return { path: `/cards/${id}`, query: { return_to: returnTo } }
+}
 defineEmits<{ move: [direction: -1 | 1] }>()
 </script>
 <template>
   <article class="card mb-4" tabindex="0" :aria-label="`JKB-${card.number}: ${card.title}`">
     <div class="card-content p-4">
-      <RouterLink :to="`/cards/${card.id}`">
+      <RouterLink :to="cardURL(card.id)">
         <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
-        <p class="has-text-weight-semibold">{{ card.title }}</p>
+        <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
+          {{ card.title }}
+        </p>
       </RouterLink>
       <div class="tags mt-4 mb-2">
         <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>

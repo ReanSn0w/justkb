@@ -30,7 +30,7 @@ async function submit() {
 }
 </script>
 <template>
-  <main class="hero is-fullheight">
+  <main class="hero is-fullheight login-page">
     <div class="hero-body">
       <div class="container">
         <div class="columns is-centered">

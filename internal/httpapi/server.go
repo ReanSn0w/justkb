@@ -22,6 +22,7 @@ type Dependencies struct {
 	DB                *sql.DB
 	DatabasePath      string
 	SystemName        string
+	IconColor         string
 	CookieSecure      bool
 	AttachmentMaxSize int64
 }
@@ -42,6 +43,6 @@ func New(deps Dependencies) http.Handler {
 	}
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/mcp/", http.NotFoundHandler())
-	mux.Handle("/", frontend.Handler())
+	mux.Handle("/", frontend.Handler(frontend.Branding{Name: systemName, Color: deps.IconColor}))
 	return middleware(deps.Logger, gate.Middleware(mux))
 }
