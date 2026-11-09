@@ -144,4 +144,26 @@ describe('board store', () => {
     expect(store.cards[0]?.title).toBe('A')
     expect(store.refreshing).toBe(false)
   })
+
+  it('does not replace current results with a stale initial load', async () => {
+    setActivePinia(createPinia())
+    const store = useBoardStore()
+    let resolveInitial!: (value: { items: Card[]; next_cursor: null }) => void
+    vi.mocked(cardsApi.list).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveInitial = resolve
+        }),
+    )
+    const initial = store.initialize()
+    store.filters.q = 'current'
+    vi.mocked(cardsApi.list).mockResolvedValue({
+      items: [{ ...card, title: 'Current' }],
+      next_cursor: null,
+    })
+    resolveInitial({ items: [{ ...card, title: 'Outdated' }], next_cursor: null })
+    await initial
+    expect(store.cards[0]?.title).toBe('Current')
+    expect(store.loading).toBe(false)
+  })
 })

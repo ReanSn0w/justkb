@@ -98,7 +98,8 @@ export const useBoardStore = defineStore('board', () => {
       if (sequence === refreshSequence) cards.value = items
       else await loadCards()
     } catch {
-      error.value = 'Не удалось загрузить доску'
+      if (sequence === refreshSequence) error.value = 'Не удалось загрузить доску'
+      else await loadCards()
     } finally {
       loading.value = false
     }
