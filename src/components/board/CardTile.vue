@@ -23,7 +23,7 @@ defineEmits<{ move: [direction: -1 | 1] }>()
     <div class="card-content p-4">
       <RouterLink :to="cardURL(card.id)">
         <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
-        <p class="has-text-weight-semibold">
+        <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
           {{ card.title }}
         </p>
       </RouterLink>

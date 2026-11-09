@@ -7,6 +7,7 @@ import CommentPanel from '../components/comments/CommentPanel.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import StatusState from '../components/ui/StatusState.vue'
+import { prepared } from '../features/view-transitions'
 import { renderMarkdown } from '../features/markdown'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toasts'
@@ -15,10 +16,12 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const toasts = useToastStore()
-const epic = ref<Epic | null>(null)
+const epic = ref<Epic | null>(
+  prepared.project?.id === String(route.params.id) ? structuredClone(prepared.project) : null,
+)
 const cards = ref<Card[]>([])
 const columns = ref<BoardColumn[]>([])
-const loading = ref(true)
+const loading = ref(!epic.value)
 const error = ref('')
 const isAdmin = computed(() => session.user?.role === 'admin')
 const editing = computed(() => route.name === 'project-edit')
@@ -48,7 +51,9 @@ onMounted(async () => {
   try {
     const id = String(route.params.id)
     const [loadedEpic, loadedCards, loadedColumns] = await Promise.all([
-      epicsApi.get(id),
+      prepared.project?.id === id
+        ? Promise.resolve(structuredClone(prepared.project))
+        : epicsApi.get(id),
       loadProjectCards(id),
       directoryApi.columns(),
     ])
@@ -127,14 +132,19 @@ async function cancelEdit() {
           <div class="column is-two-thirds">
             <form v-if="editing" class="box" @submit.prevent="save">
               <BaseField label="Название">
-                <input v-model.trim="epic.name" class="input" required />
+                <input
+                  :data-transition-key="`project-${epic.id}`"
+                  v-model.trim="epic.name"
+                  class="input"
+                  required
+                />
               </BaseField>
               <BaseField label="Описание">
                 <textarea v-model="epic.description" class="textarea" rows="14" />
               </BaseField>
             </form>
             <div v-else class="box">
-              <h1 class="title">{{ epic.name }}</h1>
+              <h1 :data-transition-key="`project-${epic.id}`" class="title">{{ epic.name }}</h1>
               <div v-if="epic.description" class="content" v-html="html"></div>
               <StatusState v-else title="Описание пока не добавлено" />
             </div>

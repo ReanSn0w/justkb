@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError, cardsApi, type Activity, type Card } from '../api'
 import { useBoardStore } from '../stores/board'
 import { useToastStore } from '../stores/toasts'
+import { prepared } from '../features/view-transitions'
 import { boardReturnURL } from '../features/filters'
 import { renderMarkdown } from '../features/markdown'
 import BaseButton from '../components/ui/BaseButton.vue'
@@ -16,9 +17,11 @@ const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
   toasts = useToastStore(),
-  card = ref<Card | null>(null),
+  card = ref<Card | null>(
+    prepared.card?.id === String(route.params.id) ? structuredClone(prepared.card) : null,
+  ),
   activity = ref<Activity[]>([]),
-  loading = ref(true),
+  loading = ref(!card.value),
   error = ref('')
 const returnTo = computed(() => boardReturnURL(route.query.return_to))
 const cardLocation = (id: string, edit = false) => ({
@@ -33,7 +36,10 @@ const columnName = computed(
 onMounted(async () => {
   try {
     if (!board.columns.length) await board.initialize()
-    card.value = await cardsApi.get(String(route.params.id))
+    card.value =
+      prepared.card?.id === String(route.params.id)
+        ? structuredClone(prepared.card)
+        : await cardsApi.get(String(route.params.id))
     activity.value = (await cardsApi.activity(card.value.id)).items
   } catch {
     error.value = 'Карточка не найдена или недоступна'
@@ -121,7 +127,12 @@ function toggleTag(id: string) {
           <div class="column is-two-thirds">
             <form v-if="editing" class="box" @submit.prevent="save">
               <BaseField label="Заголовок">
-                <input v-model.trim="card.title" class="input" required />
+                <input
+                  :data-transition-key="`card-${card.id}`"
+                  v-model.trim="card.title"
+                  class="input"
+                  required
+                />
               </BaseField>
               <BaseField label="Описание">
                 <textarea v-model="card.description" class="textarea" rows="12" />
@@ -182,7 +193,7 @@ function toggleTag(id: string) {
               </fieldset>
             </form>
             <article v-else class="box">
-              <h1 class="title">{{ card.title }}</h1>
+              <h1 :data-transition-key="`card-${card.id}`" class="title">{{ card.title }}</h1>
               <div v-if="card.description" class="content" v-html="html"></div>
               <StatusState v-else title="Описание пока не добавлено" />
               <hr />

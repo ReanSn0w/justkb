@@ -33,6 +33,11 @@ function scheduleLoad() {
 
 onMounted(async () => {
   board.filters = filtersFromQuery(route.query)
+  if (board.columns.length) {
+    initialized.value = true
+    await nextTick()
+    initializeSorting()
+  }
   await board.initialize()
   if (!alive) return
   initialized.value = true

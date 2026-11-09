@@ -107,5 +107,11 @@ async function logout() {
       </div>
     </div>
   </nav>
-  <main id="main-content" tabindex="-1"><RouterView /></main>
+  <main id="main-content" tabindex="-1">
+    <RouterView v-slot="{ Component, route: pageRoute }"
+      ><component
+        :is="Component"
+        :key="`${String(pageRoute.name).replace(/-edit$/, '')}:${pageRoute.params.id || ''}`"
+    /></RouterView>
+  </main>
 </template>

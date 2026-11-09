@@ -91,7 +91,7 @@ export const useBoardStore = defineStore('board', () => {
   }
   async function initialize() {
     const sequence = ++refreshSequence
-    loading.value = true
+    loading.value = columns.value.length === 0
     error.value = ''
     try {
       const [, items] = await Promise.all([loadDirectories(), fetchCards({ ...filters.value })])

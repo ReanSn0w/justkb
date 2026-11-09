@@ -4,3 +4,24 @@
   --bulma-link-l: var(--bulma-primary-on-scheme-l);
   --bulma-link-on-scheme-l: var(--bulma-primary-on-scheme-l);
 }
+
+/* The root stays still: only page content and the selected entity animate. */
+:root {
+  view-transition-name: none;
+}
+#main-content,
+.login-page {
+  view-transition-name: page-content;
+}
+::view-transition-group(page-content) {
+  animation-duration: 200ms;
+}
+::view-transition-group(selected-entity) {
+  animation-duration: 260ms;
+  animation-timing-function: ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) {
+    animation: none !important;
+  }
+}
