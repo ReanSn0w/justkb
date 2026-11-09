@@ -87,16 +87,23 @@ Frontend собирается Vite и встраивается в Go-бинар�
    `JKB_IMAGE=ghcr.io/reansn0w/justkb:1.0.0` в `.env`. Для сборки текущего
    исходного кода вместо опубликованного образа выполните `docker compose build app`.
 
-3. Примените миграции:
+3. Создайте и запустите постоянный контейнер приложения:
 
    ```sh
-   docker compose run --rm app /usr/local/bin/jkb-migrate up
+   docker compose up -d app
    ```
 
-4. Создайте первого администратора:
+4. Примените миграции внутри работающего контейнера и перезапустите приложение:
 
    ```sh
-   docker compose run --rm app /usr/local/bin/jkb-admin user add \
+   docker compose exec app /usr/local/bin/jkb-migrate up
+   docker compose restart app
+   ```
+
+5. Создайте первого администратора:
+
+   ```sh
+   docker compose exec app /usr/local/bin/jkb-admin user add \
      --role admin \
      --display-name "Administrator" \
      admin
@@ -104,12 +111,6 @@ Frontend собирается Vite и встраивается в Go-бинар�
 
    Команда интерактивно запросит пароль и его подтверждение. Пароль не
    передаётся через аргументы и не выводится в терминал.
-
-5. Запустите приложение:
-
-   ```sh
-   docker compose up -d app
-   ```
 
 По умолчанию JKB будет доступен на [http://localhost:8080](http://localhost:8080).
 База SQLite, вложения и аватары попадут в единый Compose volume `data`.
@@ -124,6 +125,13 @@ docker compose ps
 curl --fail http://localhost:8080/health/ready
 ```
 
+Не заменяйте `docker compose exec app ...` на
+`docker compose run --rm app ...` в развёрнутом стенде. Reverse proxy с
+service discovery через Docker socket может увидеть одноразовый
+контейнер как экземпляр сервиса и направить на него часть трафика.
+До завершения миграции и успешной readiness-проверки не направляйте
+на обновляемый контейнер внешний трафик.
+
 ## Административный CLI
 
 `jkb-admin` предназначен для bootstrap и операций, которые не требуют отдельного
@@ -132,7 +140,7 @@ curl --fail http://localhost:8080/health/ready
 Создание обычного пользователя:
 
 ```sh
-docker compose run --rm app /usr/local/bin/jkb-admin user add \
+docker compose exec app /usr/local/bin/jkb-admin user add \
   --display-name "Ada Lovelace" \
   --email ada@example.test \
   ada
@@ -143,15 +151,15 @@ docker compose run --rm app /usr/local/bin/jkb-admin user add \
 Сброс пароля с отзывом всех web-сессий пользователя:
 
 ```sh
-docker compose run --rm app /usr/local/bin/jkb-admin user password admin
+docker compose exec app /usr/local/bin/jkb-admin user password admin
 ```
 
 Просмотр профиля и изменение активности:
 
 ```sh
-docker compose run --rm app /usr/local/bin/jkb-admin user show admin
-docker compose run --rm app /usr/local/bin/jkb-admin user disable alice
-docker compose run --rm app /usr/local/bin/jkb-admin user enable alice
+docker compose exec app /usr/local/bin/jkb-admin user show admin
+docker compose exec app /usr/local/bin/jkb-admin user disable alice
+docker compose exec app /usr/local/bin/jkb-admin user enable alice
 ```
 
 `user show` выводит ID, логин, отображаемое имя, email, роль, активность и
@@ -161,10 +169,10 @@ docker compose run --rm app /usr/local/bin/jkb-admin user enable alice
 Справка:
 
 ```sh
-docker compose run --rm app /usr/local/bin/jkb-admin --help
-docker compose run --rm app /usr/local/bin/jkb-admin user add --help
-docker compose run --rm app /usr/local/bin/jkb-admin user password --help
-docker compose run --rm app /usr/local/bin/jkb-admin user show --help
+docker compose exec app /usr/local/bin/jkb-admin --help
+docker compose exec app /usr/local/bin/jkb-admin user add --help
+docker compose exec app /usr/local/bin/jkb-admin user password --help
+docker compose exec app /usr/local/bin/jkb-admin user show --help
 ```
 
 ## Remote MCP
@@ -244,8 +252,10 @@ API-токены используются MCP endpoint. Контракт сущ�
 
 ```sh
 docker compose pull app
-docker compose run --rm app /usr/local/bin/jkb-migrate up
 docker compose up -d app
+docker compose exec app /usr/local/bin/jkb-migrate up
+docker compose restart app
+curl --fail http://localhost:8080/health/ready
 ```
 
 Для перехода на определённый релиз сначала измените `JKB_IMAGE` в `.env`,
