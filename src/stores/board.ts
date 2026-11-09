@@ -90,11 +90,13 @@ export const useBoardStore = defineStore('board', () => {
     }
   }
   async function initialize() {
+    const sequence = ++refreshSequence
     loading.value = true
     error.value = ''
     try {
       const [, items] = await Promise.all([loadDirectories(), fetchCards({ ...filters.value })])
-      cards.value = items
+      if (sequence === refreshSequence) cards.value = items
+      else await loadCards()
     } catch {
       error.value = 'Не удалось загрузить доску'
     } finally {

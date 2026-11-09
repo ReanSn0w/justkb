@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError, cardsApi, type Activity, type Card } from '../api'
 import { useBoardStore } from '../stores/board'
 import { useToastStore } from '../stores/toasts'
+import { boardReturnURL } from '../features/filters'
 import { renderMarkdown } from '../features/markdown'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
@@ -19,6 +20,11 @@ const route = useRoute(),
   activity = ref<Activity[]>([]),
   loading = ref(true),
   error = ref('')
+const returnTo = computed(() => boardReturnURL(route.query.return_to))
+const cardLocation = (id: string, edit = false) => ({
+  path: `/cards/${id}${edit ? '/edit' : ''}`,
+  query: { return_to: returnTo.value },
+})
 const html = computed(() => renderMarkdown(card.value?.description || ''))
 const editing = computed(() => route.name === 'card-edit')
 const columnName = computed(
@@ -48,7 +54,7 @@ async function save() {
       due_at: card.value.due_at,
     })
     toasts.show('Карточка сохранена')
-    await router.push(`/cards/${card.value.id}`)
+    await router.push(cardLocation(card.value.id))
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
       error.value = 'Карточка уже изменена другим участником. Перезагрузите данные.'
@@ -69,7 +75,7 @@ async function cancelEdit() {
   if (!card.value) return
   card.value = await cardsApi.get(card.value.id)
   error.value = ''
-  await router.push(`/cards/${card.value.id}`)
+  await router.push(cardLocation(card.value.id))
 }
 function toggleTag(id: string) {
   if (!card.value) return
@@ -88,7 +94,7 @@ function toggleTag(id: string) {
       <template v-else-if="card">
         <header class="level">
           <div class="level-left">
-            <button class="button" @click="editing ? cancelEdit() : router.push('/')">
+            <button class="button" @click="editing ? cancelEdit() : router.push(returnTo)">
               {{ editing ? '← Карточка' : '← Доска' }}
             </button>
           </div>
@@ -102,7 +108,7 @@ function toggleTag(id: string) {
               }}</BaseButton>
               <BaseButton @click="save">Сохранить</BaseButton>
             </div>
-            <BaseButton v-else @click="router.push(`/cards/${card.id}/edit`)">
+            <BaseButton v-else @click="router.push(cardLocation(card.id, true))">
               Редактировать
             </BaseButton>
           </div>
