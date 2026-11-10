@@ -4,11 +4,12 @@ import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type Us
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
+import ArchiveSettings from '../components/admin/ArchiveSettings.vue'
 import BackupSettings from '../components/admin/BackupSettings.vue'
 import ColorTag from '../components/ui/ColorTag.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
-type Tab = DirectoryTab | 'backup'
+type Tab = DirectoryTab | 'backup' | 'archive'
 type RenameKind = Exclude<DirectoryTab, 'users'>
 type RenameItem = Group | BoardColumn | Tag
 const labels: Record<Tab, string> = {
@@ -17,6 +18,7 @@ const labels: Record<Tab, string> = {
   columns: 'Колонки',
   tags: 'Теги',
   backup: 'Резервные копии',
+  archive: 'Архивация',
 }
 const users = ref<User[]>([]),
   groups = ref<Group[]>([]),
@@ -160,7 +162,7 @@ async function saveRename() {
           </li>
         </ul>
       </nav>
-      <form v-if="tab !== 'backup'" class="box" @submit.prevent="create">
+      <form v-if="tab !== 'backup' && tab !== 'archive'" class="box" @submit.prevent="create">
         <div class="columns is-align-items-flex-end">
           <div class="column">
             <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'">
@@ -179,7 +181,7 @@ async function saveRename() {
           </div>
         </div>
       </form>
-      <div v-if="tab !== 'backup'" class="box">
+      <div v-if="tab !== 'backup' && tab !== 'archive'" class="box">
         <template v-if="tab === 'users'">
           <article v-for="user in users" :key="user.id" class="media">
             <div class="media-left"><UserAvatar :user="user" :size="48" /></div>
@@ -270,6 +272,7 @@ async function saveRename() {
           Записей пока нет.
         </p>
       </div>
+      <ArchiveSettings v-else-if="tab === 'archive'" />
       <BackupSettings v-else />
       <div v-if="renaming" class="modal is-active" role="dialog" aria-modal="true">
         <div class="modal-background" @click="cancelRename" />
