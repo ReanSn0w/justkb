@@ -150,7 +150,7 @@ JKB — одна общая kanban-доска для небольшой кома
 
 - `epic_id`, включая специальное значение `none`;
 - `group_id`, включая `none`;
-- `assignee_id`, включая `me` и `none`;
+- `assignee_id` совпадает с любым исполнителем, `me` — с текущим пользователем, `none` — с карточками без исполнителей;
 - повторяемый `tag_id`;
 - `column_id`;
 - `q` для поиска по номеру, заголовку и описанию;
@@ -167,11 +167,22 @@ JKB — одна общая kanban-доска для небольшой кома
   "column_id": "uuid",
   "epic_id": "uuid",
   "group_id": "uuid",
-  "assignee_id": null,
+  "assignee_ids": ["uuid"],
   "tag_ids": ["uuid"],
   "due_at": null
 }
 ```
+
+Ответы с карточкой включают упорядоченные массивы `assignee_ids` и `assignees`.
+Поля `assignee_id` и `assignee` по-прежнему возвращают основного исполнителя.
+В REST и MCP массив `assignee_ids` заменяет весь список, первый элемент
+становится основным. Пустой массив снимает все назначения. Пропуск поля
+сохраняет список при обновлении. Список принимает только существующих
+пользователей без повторов.
+
+Старое поле `assignee_id` заменяет основного исполнителя, сохраняя остальных.
+При обновлении значение `null` снимает основное назначение. Следующий исполнитель
+становится основным. Массив и старое поле назначения передаются раздельно.
 
 Пример перемещения:
 
@@ -276,10 +287,10 @@ JKB — одна общая kanban-доска для небольшой кома
 
 | Tool | Обязательные аргументы | Опциональные аргументы |
 |---|---|---|
-| `create_card` | `title`, `column_id` | `description`, `epic_id`, `group_id`, `assignee_id`, `tag_ids`, `due_at` |
-| `update_card` | `card_id`, `expected_version`, `patch` | — |
+| `create_card` | `title`, `column_id` | `description`, `epic_id`, `group_id`, `assignee_id`, `assignee_ids`, `tag_ids`, `due_at` |
+| `update_card` | `card_id`, `expected_version` | `title`, `description`, `epic_id`, `group_id`, `assignee_id`, `assignee_ids`, `tag_ids` |
 | `move_card` | `card_id`, `expected_version`, `target_column_id` | `before_card_id` или `after_card_id` |
-| `assign_card` | `card_id`, `expected_version` | `group_id`, `assignee_id`; `null` снимает назначение |
+| `assign_card` | `card_id`, `expected_version` | `group_id`, `assignee_id`, `assignee_ids` |
 | `archive_card` | `card_id`, `expected_version` | — |
 | `restore_card` | `card_id`, `expected_version` | — |
 

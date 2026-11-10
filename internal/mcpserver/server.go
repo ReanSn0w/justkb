@@ -295,6 +295,7 @@ func (s *services) addTools(server *mcp.Server) {
 		EpicID      string     `json:"epic_id,omitempty"`
 		GroupID     string     `json:"group_id,omitempty"`
 		AssigneeID  string     `json:"assignee_id,omitempty"`
+		AssigneeIDs []string   `json:"assignee_ids,omitempty"`
 		TagIDs      []string   `json:"tag_ids,omitempty"`
 		DueAt       *time.Time `json:"due_at,omitempty"`
 	}
@@ -303,7 +304,7 @@ func (s *services) addTools(server *mcp.Server) {
 		if result != nil {
 			return result, nil, nil
 		}
-		item, err := s.cards.Create(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, cards.CreateInput{Title: input.Title, Description: input.Description, ColumnID: input.ColumnID, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, TagIDs: input.TagIDs, DueAt: input.DueAt})
+		item, err := s.cards.Create(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, cards.CreateInput{Title: input.Title, Description: input.Description, ColumnID: input.ColumnID, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, AssigneeIDs: input.AssigneeIDs, TagIDs: input.TagIDs, DueAt: input.DueAt})
 		return domainResult(item, err)
 	})
 	type updateInput struct {
@@ -314,14 +315,15 @@ func (s *services) addTools(server *mcp.Server) {
 		EpicID          *string   `json:"epic_id,omitempty"`
 		GroupID         *string   `json:"group_id,omitempty"`
 		AssigneeID      *string   `json:"assignee_id,omitempty"`
+		AssigneeIDs     []string  `json:"assignee_ids,omitempty"`
 		TagIDs          *[]string `json:"tag_ids,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "update_card", Description: "Update card fields using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input updateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "update_card", Description: "Update card fields using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input updateInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
 		}
-		item, err := s.cards.Update(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, input.CardID, cards.UpdateInput{ExpectedVersion: input.ExpectedVersion, Title: input.Title, Description: input.Description, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, TagIDs: input.TagIDs})
+		item, err := s.cards.Update(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, input.CardID, cards.UpdateInput{ExpectedVersion: input.ExpectedVersion, Title: input.Title, Description: input.Description, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: legacyAssigneeID(req, input.AssigneeID), AssigneeIDs: input.AssigneeIDs, TagIDs: input.TagIDs})
 		return domainResult(item, err)
 	})
 	type moveInput struct {
@@ -340,19 +342,21 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(item, err)
 	})
 	type assignInput struct {
-		CardID          string  `json:"card_id"`
-		ExpectedVersion int64   `json:"expected_version"`
-		GroupID         *string `json:"group_id,omitempty"`
-		AssigneeID      *string `json:"assignee_id,omitempty"`
+		CardID          string   `json:"card_id"`
+		ExpectedVersion int64    `json:"expected_version"`
+		GroupID         *string  `json:"group_id,omitempty"`
+		AssigneeID      *string  `json:"assignee_id,omitempty"`
+		AssigneeIDs     []string `json:"assignee_ids,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "assign_card", Description: "Assign a group or user to a card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input assignInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "assign_card", Description: "Assign a group or replace the assignees of a card. An empty assignee_ids array clears the list.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input assignInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
 		}
-		item, err := s.cards.Update(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, input.CardID, cards.UpdateInput{ExpectedVersion: input.ExpectedVersion, GroupID: input.GroupID, AssigneeID: input.AssigneeID})
+		item, err := s.cards.Update(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, input.CardID, cards.UpdateInput{ExpectedVersion: input.ExpectedVersion, GroupID: input.GroupID, AssigneeID: legacyAssigneeID(req, input.AssigneeID), AssigneeIDs: input.AssigneeIDs})
 		return domainResult(item, err)
 	})
+
 	type archiveInput struct {
 		CardID          string `json:"card_id"`
 		ExpectedVersion int64  `json:"expected_version"`
@@ -452,4 +456,17 @@ func movementPeriod(fromValue, toValue string, now time.Time) (time.Time, time.T
 		return time.Time{}, time.Time{}, cards.ErrValidation
 	}
 	return from, to, nil
+}
+
+// The typed MCP input uses nil for both an omitted field and explicit JSON null.
+func legacyAssigneeID(req *mcp.CallToolRequest, id *string) *string {
+	if id != nil {
+		return id
+	}
+	var arguments map[string]json.RawMessage
+	if json.Unmarshal(req.Params.Arguments, &arguments) == nil && string(arguments["assignee_id"]) == "null" {
+		empty := ""
+		return &empty
+	}
+	return nil
 }

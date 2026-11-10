@@ -512,6 +512,7 @@ type createCardInput struct {
 	EpicID      string     `json:"epic_id"`
 	GroupID     string     `json:"group_id"`
 	AssigneeID  string     `json:"assignee_id"`
+	AssigneeIDs []string   `json:"assignee_ids"`
 	TagIDs      []string   `json:"tag_ids"`
 	DueAt       *time.Time `json:"due_at"`
 }
@@ -522,7 +523,7 @@ func (a *api) createCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := PrincipalFromContext(r.Context())
-	item, err := a.cards.Create(r.Context(), cards.Actor{UserID: p.User.ID}, cards.CreateInput{Title: input.Title, Description: input.Description, ColumnID: input.ColumnID, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, TagIDs: input.TagIDs, DueAt: input.DueAt})
+	item, err := a.cards.Create(r.Context(), cards.Actor{UserID: p.User.ID}, cards.CreateInput{Title: input.Title, Description: input.Description, ColumnID: input.ColumnID, EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, AssigneeIDs: input.AssigneeIDs, TagIDs: input.TagIDs, DueAt: input.DueAt})
 	writeCreated(w, r, item, err)
 }
 func (a *api) getCard(w http.ResponseWriter, r *http.Request) {
@@ -556,6 +557,12 @@ func (a *api) updateCard(w http.ResponseWriter, r *http.Request) {
 	decodeNullableString(raw, "epic_id", &input.EpicID)
 	decodeNullableString(raw, "group_id", &input.GroupID)
 	decodeNullableString(raw, "assignee_id", &input.AssigneeID)
+	if value, ok := raw["assignee_ids"]; ok {
+		if json.Unmarshal(value, &input.AssigneeIDs) != nil || input.AssigneeIDs == nil {
+			handleError(w, r, cards.ErrValidation)
+			return
+		}
+	}
 	if value, ok := raw["tag_ids"]; ok {
 		var ids []string
 		if json.Unmarshal(value, &ids) != nil {

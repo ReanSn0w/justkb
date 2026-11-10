@@ -26,12 +26,8 @@ const card: Card = {
   },
   group: { ...timestamps, id: 'group-1', name: 'Backend', color: '#00d1b2' },
   assignee: {
-    ...timestamps,
     id: 'user-1',
-    username: 'ada',
     display_name: 'Ada',
-    role: 'member',
-    is_active: true,
   },
   tags: [{ ...timestamps, id: 'tag-1', name: 'Важно', color: '#00d1b2' }],
 }

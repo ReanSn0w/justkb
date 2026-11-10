@@ -74,6 +74,8 @@ export interface Comment {
   updated_at: string
   author: Pick<User, 'id' | 'display_name' | 'avatar_url'>
 }
+export type CardAssignee = Pick<User, 'id' | 'display_name' | 'avatar_url'>
+
 export interface Card extends Timestamps {
   id: UUID
   number: number
@@ -86,12 +88,14 @@ export interface Card extends Timestamps {
   epic_id?: UUID | null
   group_id?: UUID | null
   assignee_id?: UUID | null
+  assignee_ids?: UUID[]
   due_at?: string | null
   tags: Tag[]
   attachments?: Attachment[]
   epic?: Epic | null
   group?: Group | null
-  assignee?: User | null
+  assignee?: CardAssignee | null
+  assignees?: CardAssignee[]
 }
 export interface ListResult<T> {
   items: T[]
@@ -118,6 +122,7 @@ export interface CardInput {
   epic_id?: UUID | null
   group_id?: UUID | null
   assignee_id?: UUID | null
+  assignee_ids?: UUID[]
   tag_ids?: UUID[]
   due_at?: string | null
 }
@@ -127,6 +132,7 @@ export interface CardPatch {
   epic_id?: UUID | null
   group_id?: UUID | null
   assignee_id?: UUID | null
+  assignee_ids?: UUID[]
   tag_ids?: UUID[]
   due_at?: string | null
 }

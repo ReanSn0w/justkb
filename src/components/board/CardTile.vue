@@ -30,9 +30,13 @@ defineEmits<{ move: [direction: -1 | 1] }>()
       <div class="tags mt-4 mb-2">
         <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
         <ColorTag v-if="card.group" :color="card.group.color">{{ card.group.name }}</ColorTag>
-        <span v-if="card.assignee" class="tag is-info">
-          <UserAvatar :user="card.assignee" :size="24" />
-          <span class="ml-1">{{ card.assignee.display_name }}</span>
+        <span
+          v-for="assignee in card.assignees ?? (card.assignee ? [card.assignee] : [])"
+          :key="assignee.id"
+          class="tag is-info"
+        >
+          <UserAvatar :user="assignee" :size="24" />
+          <span class="ml-1">{{ assignee.display_name }}</span>
         </span>
       </div>
       <div v-if="card.tags.length" class="tags mb-3">

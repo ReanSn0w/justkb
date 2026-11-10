@@ -141,6 +141,29 @@ func TestMCPIntegration(t *testing.T) {
 	if !ok || !strings.Contains(conflictText.Text, "card_version_conflict") {
 		t.Fatalf("conflict content=%#v", conflict.Content)
 	}
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT version FROM cards WHERE id=$1`, cardID).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash) VALUES ('extra','extra','Extra','unused')`); err != nil {
+		t.Fatal(err)
+	}
+	assigned, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "assign_card", Arguments: map[string]any{
+		"card_id": cardID, "expected_version": version, "assignee_ids": []string{user.ID, "extra"},
+	}})
+	if err != nil || assigned.IsError {
+		t.Fatalf("assign_card result=%#v err=%v", assigned, err)
+	}
+	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "assign_card", Arguments: map[string]any{
+		"card_id": cardID, "expected_version": version + 1, "assignee_id": nil,
+	}})
+	if err != nil || cleared.IsError {
+		t.Fatalf("legacy clear result=%#v err=%v", cleared, err)
+	}
+	var primary string
+	if err := db.QueryRowContext(ctx, `SELECT assignee_id FROM cards WHERE id=$1`, cardID).Scan(&primary); err != nil || primary != "extra" {
+		t.Fatalf("legacy clear primary=%s err=%v", primary, err)
+	}
 	var actorTokenID string
 	if err := db.QueryRowContext(ctx, `SELECT actor_token_id FROM card_activity WHERE action='created' ORDER BY created_at DESC LIMIT 1`).Scan(&actorTokenID); err != nil {
 		t.Fatal(err)

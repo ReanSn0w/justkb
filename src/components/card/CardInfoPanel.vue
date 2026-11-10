@@ -33,13 +33,17 @@ defineProps<{ card: Card; columnName: string }>()
         </dd>
       </div>
       <div class="mb-4">
-        <dt class="has-text-grey is-size-7 mb-1">Исполнитель</dt>
+        <dt class="has-text-grey is-size-7 mb-1">Исполнители</dt>
         <dd>
-          <span v-if="card.assignee" class="tag is-info">
-            <UserAvatar :user="card.assignee" :size="24" />
-            <span class="ml-1">{{ card.assignee.display_name }}</span>
+          <span
+            v-for="assignee in card.assignees ?? (card.assignee ? [card.assignee] : [])"
+            :key="assignee.id"
+            class="tag is-info"
+          >
+            <UserAvatar :user="assignee" :size="24" />
+            <span class="ml-1">{{ assignee.display_name }}</span>
           </span>
-          <span v-else>Не назначен</span>
+          <span v-if="!card.assignees?.length && !card.assignee">Не назначены</span>
         </dd>
       </div>
       <div class="mb-4">

@@ -3,6 +3,7 @@ package cards
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -152,5 +153,61 @@ func TestCardOrderingIntegration(t *testing.T) {
 	ordered, err := service.List(ctx, Filters{ColumnID: firstColumn, Limit: 10})
 	if err != nil || len(ordered.Items) != 3 || ordered.Items[0].ID != third.ID || ordered.Items[1].ID != second.ID || ordered.Items[2].ID != first.ID {
 		t.Fatalf("ordered=%#v err=%v", ordered, err)
+	}
+}
+
+func TestMultipleAssigneesKeepLegacyWritesAndFiltersCompatible(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash,is_active)
+		VALUES ('first','first','First','unused',0), ('second','second','Second','unused',1),
+		       ('third','third','Third','unused',1)`); err != nil {
+		t.Fatal(err)
+	}
+	var columnID string
+	if err := db.QueryRow(`SELECT id FROM board_columns ORDER BY position LIMIT 1`).Scan(&columnID); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	actor := Actor{UserID: "second"}
+	card, err := service.Create(ctx, actor, CreateInput{Title: "Existing", ColumnID: columnID, AssigneeID: "first"})
+	if err != nil || !slices.Equal(card.AssigneeIDs, []string{"first"}) {
+		t.Fatalf("legacy create: %#v, %v", card, err)
+	}
+	card, err = service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, AssigneeIDs: []string{"first", "second", "third"}})
+	if err != nil || !slices.Equal(card.AssigneeIDs, []string{"first", "second", "third"}) || card.Assignee == nil || card.Assignee.ID != "first" {
+		t.Fatalf("set assignees: %#v, %v", card, err)
+	}
+	for _, filter := range []string{"second", "me"} {
+		page, err := service.List(ctx, Filters{AssigneeID: filter, CurrentUserID: "second"})
+		if err != nil || len(page.Items) != 1 || page.Items[0].ID != card.ID {
+			t.Fatalf("filter %s: %#v, %v", filter, page, err)
+		}
+	}
+	title := "Preserve all assignees"
+	card, err = service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, Title: &title})
+	if err != nil || !slices.Equal(card.AssigneeIDs, []string{"first", "second", "third"}) {
+		t.Fatalf("unrelated update: %#v, %v", card, err)
+	}
+	for _, ids := range [][]string{{"missing"}, {"second", "second"}} {
+		if _, err := service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, AssigneeIDs: ids}); !errors.Is(err, ErrValidation) {
+			t.Fatalf("invalid assignees: %v", err)
+		}
+	}
+	clearPrimary := ""
+	card, err = service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, AssigneeID: &clearPrimary})
+	if err != nil || !slices.Equal(card.AssigneeIDs, []string{"second", "third"}) || card.Assignee == nil || card.Assignee.ID != "second" {
+		t.Fatalf("legacy clear: %#v, %v", card, err)
+	}
+	if _, err := service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version - 1, AssigneeIDs: []string{}}); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale clear: %v", err)
+	}
+	card, err = service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, AssigneeIDs: []string{}})
+	if err != nil || len(card.AssigneeIDs) != 0 || card.Assignee != nil {
+		t.Fatalf("clear all: %#v, %v", card, err)
+	}
+	page, err := service.List(ctx, Filters{AssigneeID: "none"})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != card.ID {
+		t.Fatalf("filter none: %#v, %v", page, err)
 	}
 }

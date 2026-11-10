@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import axe from 'axe-core'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardsApi, type Card } from '../api'
@@ -8,6 +9,7 @@ import CardView from './CardView.vue'
 const mockedRoute = vi.hoisted(() => ({
   name: 'card',
   params: { id: 'card-1' },
+  query: {},
 }))
 
 vi.mock('vue-router', async () => {
@@ -23,7 +25,7 @@ vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api')
   return {
     ...actual,
-    cardsApi: { ...actual.cardsApi, get: vi.fn(), activity: vi.fn() },
+    cardsApi: { ...actual.cardsApi, get: vi.fn(), activity: vi.fn(), update: vi.fn() },
   }
 })
 
@@ -88,5 +90,48 @@ describe('card details layout', () => {
     expect(wrapper.find('comment-panel-stub').exists()).toBe(false)
     expect(wrapper.text()).toContain('Команда')
     expect(wrapper.text()).toContain('Без команды')
+  })
+
+  it('adds an assignee while keeping the inactive legacy assignee', async () => {
+    mockedRoute.name = 'card-edit'
+    const legacy = { id: 'legacy', display_name: 'Прежний исполнитель' }
+    const selected = { id: 'new', display_name: 'Новый исполнитель' }
+    useBoardStore().users = [
+      {
+        ...selected,
+        username: 'new',
+        role: 'member',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ]
+    vi.mocked(cardsApi.get).mockResolvedValue({ ...card, assignee_id: legacy.id, assignee: legacy })
+    vi.mocked(cardsApi.update).mockResolvedValue({
+      ...card,
+      assignee_ids: [legacy.id, selected.id],
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    const fieldset = wrapper
+      .findAll('fieldset')
+      .find((field) => field.text().includes('Исполнители'))!
+    expect(fieldset.text()).toContain(legacy.display_name)
+    const fields = fieldset.findAll<HTMLInputElement>('input')
+    expect(fields[1]!.element.checked).toBe(true)
+    document.body.append(wrapper.element)
+    const result = await axe.run(fieldset.element, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(result.violations).toEqual([])
+    await fields[0]!.setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(cardsApi.update).toHaveBeenCalledWith(
+      card.id,
+      card.version,
+      expect.objectContaining({ assignee_ids: [legacy.id, selected.id] }),
+    )
+    wrapper.unmount()
   })
 })

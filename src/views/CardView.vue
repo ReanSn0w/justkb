@@ -33,6 +33,29 @@ const editing = computed(() => route.name === 'card-edit')
 const columnName = computed(
   () => board.columns.find((column) => column.id === card.value?.column_id)?.name || '—',
 )
+const editedAssigneeIDs = ref<string[]>()
+const assignedIDs = computed(
+  () =>
+    editedAssigneeIDs.value ??
+    card.value?.assignee_ids ??
+    (card.value?.assignee_id ? [card.value.assignee_id] : []),
+)
+const assignmentUsers = computed(() => {
+  const assigned = card.value?.assignees ?? (card.value?.assignee ? [card.value.assignee] : [])
+  return [
+    ...board.users,
+    ...assigned.filter((user) => !board.users.some(({ id }) => id === user.id)),
+  ]
+})
+
+function toggleAssignee(id: string) {
+  if (!card.value) return
+  const current = assignedIDs.value
+  editedAssigneeIDs.value = current.includes(id)
+    ? current.filter((assigneeID) => assigneeID !== id)
+    : [...current, id]
+}
+
 onMounted(async () => {
   try {
     if (!board.columns.length) await board.initialize()
@@ -55,10 +78,11 @@ async function save() {
       description: card.value.description,
       epic_id: card.value.epic_id,
       group_id: card.value.group_id,
-      assignee_id: card.value.assignee_id,
+      assignee_ids: editedAssigneeIDs.value,
       tag_ids: card.value.tags.map((t) => t.id),
       due_at: card.value.due_at,
     })
+    editedAssigneeIDs.value = undefined
     toasts.show('Карточка сохранена')
     await router.push(cardLocation(card.value.id))
   } catch (cause) {
@@ -163,16 +187,21 @@ function toggleTag(id: string) {
                   </BaseField>
                 </div>
                 <div class="column is-half">
-                  <BaseField label="Исполнитель">
-                    <div class="select is-fullwidth">
-                      <select v-model="card.assignee_id">
-                        <option :value="null">Не назначен</option>
-                        <option v-for="user in board.users" :key="user.id" :value="user.id">
-                          {{ user.display_name }}
-                        </option>
-                      </select>
-                    </div>
-                  </BaseField>
+                  <fieldset>
+                    <legend class="label">Исполнители</legend>
+                    <label
+                      v-for="user in assignmentUsers"
+                      :key="user.id"
+                      class="checkbox mr-4 mb-2"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="assignedIDs.includes(user.id)"
+                        @change="toggleAssignee(user.id)"
+                      />
+                      {{ user.display_name }}
+                    </label>
+                  </fieldset>
                 </div>
                 <div class="column is-half">
                   <BaseField label="Срок">
