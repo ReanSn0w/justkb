@@ -41,7 +41,7 @@ async function load() {
   loading.value = !items.value.length
   error.value = ''
   try {
-    items.value = (await epicsApi.list(session.user?.role === 'admin')).items
+    items.value = (await epicsApi.list()).items
   } catch {
     error.value = 'Не удалось загрузить проекты'
   } finally {

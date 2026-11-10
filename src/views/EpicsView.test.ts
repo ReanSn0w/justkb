@@ -52,7 +52,7 @@ describe('project directory', () => {
       },
     })
     await flushPromises()
-    expect(epicsApi.list).toHaveBeenCalledWith(true)
+    expect(epicsApi.list).toHaveBeenCalledWith()
     expect(wrapper.text()).toContain('Platform')
     expect(wrapper.text()).not.toContain('Shared services')
     expect(wrapper.text()).toContain('3 задачи')

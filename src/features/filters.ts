@@ -39,7 +39,11 @@ export function mergeFilterQuery(query: LocationQuery, filters: CardFilters): Lo
   return { ...rest, ...queryFromFilters(filters) }
 }
 export function boardReturnURL(value: unknown): string {
-  if (typeof value !== 'string' || !/^\/(?:[?#]|$)/.test(value) || /[\\\r\n]/.test(value))
+  if (
+    typeof value !== 'string' ||
+    !/^\/(?:archive)?(?:[?#]|$)/.test(value) ||
+    /[\\\r\n]/.test(value)
+  )
     return '/'
   return value
 }

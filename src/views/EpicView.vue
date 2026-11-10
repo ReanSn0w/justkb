@@ -10,6 +10,10 @@ import StatusState from '../components/ui/StatusState.vue'
 import { prepared } from '../features/view-transitions'
 import { renderMarkdown } from '../features/markdown'
 import { useSessionStore } from '../stores/session'
+import { boardReturnURL } from '../features/filters'
+import { archiveError } from '../features/archive'
+import RestoreProjectDialog from '../components/archive/RestoreProjectDialog.vue'
+import { useBoardStore } from '../stores/board'
 import { useToastStore } from '../stores/toasts'
 
 const route = useRoute()
@@ -24,7 +28,15 @@ const columns = ref<BoardColumn[]>([])
 const loading = ref(!epic.value)
 const error = ref('')
 const isAdmin = computed(() => session.user?.role === 'admin')
-const editing = computed(() => route.name === 'project-edit')
+const editing = computed(() => route.name === 'project-edit' && !epic.value?.is_archived)
+const returnTo = computed(() =>
+  typeof route.query.return_to === 'string' &&
+  boardReturnURL(route.query.return_to).startsWith('/archive')
+    ? boardReturnURL(route.query.return_to)
+    : '/projects',
+)
+const restoring = ref<Epic | null>(null)
+const board = useBoardStore()
 const html = computed(() => renderMarkdown(epic.value?.description || ''))
 const countByColumn = computed(() =>
   Object.fromEntries(
@@ -93,9 +105,31 @@ async function save() {
 
 async function toggleArchive() {
   if (!epic.value || !isAdmin.value) return
-  epic.value.is_archived = !epic.value.is_archived
-  await save()
+  try {
+    if (epic.value.is_archived) {
+      restoring.value = await epicsApi.get(epic.value.id)
+      return
+    }
+    if (!confirm('Архивировать проект вместе с его активными карточками?')) return
+    epic.value = await epicsApi.update(epic.value.id, {
+      name: epic.value.name,
+      color: epic.value.color,
+      description: epic.value.description,
+      expected_version: epic.value.version,
+      is_archived: true,
+    })
+    await board.initialize()
+    await router.replace({ path: `/projects/${epic.value.id}`, query: { return_to: '/archive' } })
+  } catch (cause) {
+    error.value = archiveError(cause)
+  }
 }
+async function restored(project: Epic) {
+  epic.value = project
+  restoring.value = null
+  await board.initialize()
+}
+
 async function cancelEdit() {
   if (!epic.value) return
   epic.value = await epicsApi.get(epic.value.id)
@@ -112,18 +146,24 @@ async function cancelEdit() {
       <template v-else>
         <header class="level">
           <div class="level-left">
-            <button class="button" @click="editing ? cancelEdit() : router.push('/projects')">
-              {{ editing ? '← Проект' : '← Проекты' }}
+            <button class="button" @click="editing ? cancelEdit() : router.push(returnTo)">
+              {{ editing ? '← Проект' : returnTo.startsWith('/archive') ? '← Архив' : '← Проекты' }}
             </button>
           </div>
           <div class="level-right">
-            <div v-if="editing" class="buttons">
+            <BaseButton v-if="epic.is_archived && isAdmin" @click="toggleArchive"
+              >Восстановить</BaseButton
+            >
+            <div v-else-if="editing" class="buttons">
               <BaseButton tone="quiet" @click="toggleArchive">
                 {{ epic.is_archived ? 'Восстановить' : 'В архив' }}
               </BaseButton>
               <BaseButton @click="save">Сохранить</BaseButton>
             </div>
-            <BaseButton v-else-if="isAdmin" @click="router.push(`/projects/${epic.id}/edit`)">
+            <BaseButton
+              v-else-if="isAdmin && !epic.is_archived"
+              @click="router.push(`/projects/${epic.id}/edit`)"
+            >
               Редактировать
             </BaseButton>
           </div>
@@ -151,7 +191,12 @@ async function cancelEdit() {
               <StatusState v-else title="Описание пока не добавлено" />
             </div>
 
-            <CommentPanel v-if="!editing" :entity-id="epic.id" entity-type="project" />
+            <CommentPanel
+              v-if="!editing"
+              :entity-id="epic.id"
+              entity-type="project"
+              :readonly="epic.is_archived"
+            />
           </div>
 
           <div class="column">
@@ -163,6 +208,7 @@ async function cancelEdit() {
                 </div>
               </div>
               <RouterLink
+                v-if="!epic.is_archived"
                 class="button is-primary is-fullwidth mb-5"
                 :to="{ name: 'board', query: { epic_id: epic.id } }"
               >
@@ -191,7 +237,12 @@ async function cancelEdit() {
                   </progress>
                 </RouterLink>
               </template>
-              <StatusState v-else title="В этом проекте пока нет задач" />
+              <RouterLink
+                v-if="epic.is_archived"
+                :to="{ path: '/archive', query: { project_id: epic.id, type: 'card' } }"
+                >Посмотреть карточки в архиве</RouterLink
+              >
+              <StatusState v-else-if="!cards.length" title="Активных задач на доске нет" />
             </aside>
             <aside class="box">
               <AttachmentPanel
@@ -205,6 +256,7 @@ async function cancelEdit() {
           </div>
         </div>
       </template>
+      <RestoreProjectDialog :project="restoring" @close="restoring = null" @restored="restored" />
     </div>
   </section>
 </template>

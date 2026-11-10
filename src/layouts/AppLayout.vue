@@ -12,9 +12,17 @@ const menuOpen = ref(false)
 const userMenuOpen = ref(false)
 const userMenu = ref<HTMLElement | null>(null)
 const routeName = computed(() => String(route.name || ''))
-const boardActive = computed(() => ['board', 'card', 'card-edit'].includes(routeName.value))
-const projectsActive = computed(() =>
-  ['projects', 'project', 'project-edit'].includes(routeName.value),
+const archiveActive = computed(
+  () =>
+    routeName.value === 'archive' ||
+    (typeof route.query.return_to === 'string' &&
+      /^\/archive(?:[?#]|$)/.test(route.query.return_to)),
+)
+const boardActive = computed(
+  () => !archiveActive.value && ['board', 'card', 'card-edit'].includes(routeName.value),
+)
+const projectsActive = computed(
+  () => !archiveActive.value && ['projects', 'project', 'project-edit'].includes(routeName.value),
 )
 onClickOutside(userMenu, () => (userMenuOpen.value = false))
 function closeMenus() {
@@ -65,6 +73,13 @@ async function logout() {
           to="/projects"
           @click="closeMenus"
           >Проекты</RouterLink
+        >
+        <RouterLink
+          :class="['navbar-item', 'is-tab', { 'is-active': archiveActive }]"
+          :aria-current="archiveActive ? 'page' : undefined"
+          to="/archive"
+          @click="closeMenus"
+          >Архив</RouterLink
         >
       </div>
       <div class="navbar-end">
