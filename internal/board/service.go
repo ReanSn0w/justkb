@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	ErrNotFound       = errors.New("not found")
-	ErrValidation     = errors.New("validation failed")
-	ErrColumnNotEmpty = errors.New("column is not empty")
-	ErrLastAdmin      = errors.New("cannot disable or demote the last active admin")
+	ErrVersionConflict = errors.New("project version conflict")
+	ErrNotFound        = errors.New("not found")
+	ErrValidation      = errors.New("validation failed")
+	ErrColumnNotEmpty  = errors.New("column is not empty")
+	ErrLastAdmin       = errors.New("cannot disable or demote the last active admin")
 )
 
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
@@ -50,6 +51,7 @@ type Column struct {
 }
 
 type Epic struct {
+	Version            int64     `json:"version"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
 	Description        *string   `json:"description"`
@@ -384,7 +386,7 @@ func (s *Service) DeleteColumn(ctx context.Context, id string) error {
 
 func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
 		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
@@ -399,7 +401,7 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 	items := make([]Epic, 0)
 	for rows.Next() {
 		var item Epic
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version, &item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -410,14 +412,14 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	var item Epic
 	err := s.db.QueryRowContext(ctx, `
-		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.created_at,e.updated_at,
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
 		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
 		         WHERE c.epic_id=e.id AND NOT c.is_archived
 		           AND bc.position=(SELECT max(position) FROM board_columns))
 		FROM epics e WHERE e.id=$1`, id).Scan(
-		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived,
+		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version,
 		&item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -426,21 +428,42 @@ func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	return item, err
 }
 
-func (s *Service) SaveEpic(ctx context.Context, id, name, color string, description *string, archived bool) (Epic, error) {
+func (s *Service) SaveEpic(ctx context.Context, id, name, color string, description *string, archived bool, expectedVersion ...int64) (Epic, error) {
 	if strings.TrimSpace(name) == "" || !colorPattern.MatchString(color) {
 		return Epic{}, ErrValidation
 	}
-	var epic Epic
-	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO epics (id, name, description, color, is_archived) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,description,color,is_archived,created_at,updated_at`, ids.New(), strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
+		id = ids.New()
+		_, err := s.db.ExecContext(ctx, `INSERT INTO epics(id,name,description,color,is_archived) VALUES($1,$2,$3,$4,$5)`, id, strings.TrimSpace(name), description, color, archived)
+		if err != nil {
+			return Epic{}, err
+		}
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id,name,description,color,is_archived,created_at,updated_at`, id, strings.TrimSpace(name), description, color, archived).Scan(&epic.ID, &epic.Name, &epic.Description, &epic.Color, &epic.IsArchived, &epic.CreatedAt, &epic.UpdatedAt)
+		if len(expectedVersion) != 1 || expectedVersion[0] < 1 {
+			return Epic{}, ErrValidation
+		}
+		tx, err := appdb.BeginWrite(ctx, s.db)
+		if err != nil {
+			return Epic{}, err
+		}
+		defer tx.Rollback()
+		var version int64
+		if err := tx.QueryRowContext(ctx, `SELECT version FROM epics WHERE id=$1`, id).Scan(&version); errors.Is(err, sql.ErrNoRows) {
+			return Epic{}, ErrNotFound
+		} else if err != nil {
+			return Epic{}, err
+		}
+		if version != expectedVersion[0] {
+			return Epic{}, ErrVersionConflict
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, strings.TrimSpace(name), description, color, archived); err != nil {
+			return Epic{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return Epic{}, err
+		}
 	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return Epic{}, ErrNotFound
-	}
-	return epic, err
+	return s.GetEpic(ctx, id)
 }
 
 func (s *Service) ListTags(ctx context.Context) ([]Tag, error) {

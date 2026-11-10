@@ -61,7 +61,7 @@ func TestReferenceDataIntegration(t *testing.T) {
 	if err != nil || detail.Name != "Platform" || detail.CardCount != 0 {
 		t.Fatalf("epic detail = %#v, err = %v", detail, err)
 	}
-	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true); err != nil {
+	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true, epic.Version); err != nil {
 		t.Fatal(err)
 	}
 	epics, err := service.ListEpics(ctx, false)
@@ -135,5 +135,24 @@ func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
 	detail, err := service.GetEpic(ctx, epic.ID)
 	if err != nil || detail.CardCount != 2 || detail.CompletedCardCount != 1 {
 		t.Fatalf("epic detail=%#v err=%v", detail, err)
+	}
+}
+
+func TestEpicRejectsStaleUpdate(t *testing.T) {
+	service := NewService(testdb.Open(t).DB)
+	ctx := context.Background()
+	epic, err := service.SaveEpic(ctx, "", "Versioned", "#112233", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.SaveEpic(ctx, epic.ID, "Updated", epic.Color, nil, false, epic.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.SaveEpic(ctx, epic.ID, "Lost", epic.Color, nil, false, epic.Version); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale update: %v", err)
+	}
+	current, err := service.GetEpic(ctx, epic.ID)
+	if err != nil || current.Name != "Updated" || current.Version != 2 {
+		t.Fatalf("current=%+v err=%v", current, err)
 	}
 }

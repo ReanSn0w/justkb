@@ -119,11 +119,12 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(item, err)
 	})
 	type epicInput struct {
-		EpicID      string  `json:"epic_id,omitempty"`
-		Name        string  `json:"name"`
-		Description *string `json:"description,omitempty"`
-		Color       string  `json:"color,omitempty"`
-		IsArchived  bool    `json:"is_archived,omitempty"`
+		ExpectedVersion int64   `json:"expected_version"`
+		EpicID          string  `json:"epic_id,omitempty"`
+		Name            string  `json:"name"`
+		Description     *string `json:"description,omitempty"`
+		Color           string  `json:"color,omitempty"`
+		IsArchived      bool    `json:"is_archived,omitempty"`
 	}
 	saveEpic := func(ctx context.Context, input epicInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
@@ -136,7 +137,7 @@ func (s *services) addTools(server *mcp.Server) {
 		if input.Color == "" {
 			input.Color = "#00d1b2"
 		}
-		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived)
+		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
 		return domainResult(item, err)
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
@@ -420,6 +421,8 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 		code = "not_found"
 	case errors.Is(err, cards.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, comments.ErrValidation):
 		code = "validation_failed"
+	case errors.Is(err, board.ErrVersionConflict):
+		code = "project_version_conflict"
 	case errors.Is(err, cards.ErrVersionConflict):
 		code = "card_version_conflict"
 	}

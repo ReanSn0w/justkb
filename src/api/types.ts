@@ -27,6 +27,7 @@ export interface BoardColumn extends Timestamps {
   wip_limit?: number | null
 }
 export interface Epic extends Timestamps {
+  version: number
   id: UUID
   name: string
   color: string
@@ -55,7 +56,7 @@ export interface Attachment {
 export interface Activity {
   id: UUID
   card_id: UUID
-  actor_user_id: UUID
+  actor_user_id: UUID | null
   actor_token_id?: UUID | null
   action: string
   changes: Record<string, unknown>

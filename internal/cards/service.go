@@ -83,7 +83,7 @@ type Card struct {
 type Activity struct {
 	ID           string         `json:"id"`
 	CardID       string         `json:"card_id"`
-	ActorUserID  string         `json:"actor_user_id"`
+	ActorUserID  *string        `json:"actor_user_id"`
 	ActorTokenID *string        `json:"actor_token_id"`
 	Action       string         `json:"action"`
 	Changes      map[string]any `json:"changes"`

@@ -24,6 +24,7 @@ describe('project directory', () => {
           color: '#00d1b2',
           is_archived: false,
           card_count: 3,
+          version: 1,
           completed_card_count: 2,
           created_at: '',
           updated_at: '',

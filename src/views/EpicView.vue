@@ -72,6 +72,7 @@ async function save() {
   try {
     const current = epic.value
     const updated = await epicsApi.update(current.id, {
+      expected_version: current.version,
       name: current.name,
       description: current.description || null,
       color: current.color,

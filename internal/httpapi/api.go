@@ -441,10 +441,11 @@ func (a *api) getEpic(w http.ResponseWriter, r *http.Request) {
 }
 
 type epicInput struct {
-	Name        string  `json:"name"`
-	Color       string  `json:"color"`
-	Description *string `json:"description"`
-	IsArchived  bool    `json:"is_archived"`
+	ExpectedVersion int64   `json:"expected_version"`
+	Name            string  `json:"name"`
+	Color           string  `json:"color"`
+	Description     *string `json:"description"`
+	IsArchived      bool    `json:"is_archived"`
 }
 
 func (a *api) createEpic(w http.ResponseWriter, r *http.Request) {
@@ -452,7 +453,7 @@ func (a *api) createEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived)
+	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
 	writeCreated(w, r, item, err)
 }
 func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +461,7 @@ func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived)
+	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
 	writeItem(w, r, item, err)
 }
 
@@ -818,6 +819,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
 	case errors.Is(err, auth.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, comments.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, avatars.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Validation failed"
+	case errors.Is(err, board.ErrVersionConflict):
+		status, code, message = http.StatusConflict, "project_version_conflict", "Project was changed by another actor"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
 	case errors.Is(err, board.ErrColumnNotEmpty):
