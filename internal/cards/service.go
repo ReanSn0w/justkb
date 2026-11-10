@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
@@ -83,7 +84,7 @@ type Card struct {
 type Activity struct {
 	ID           string         `json:"id"`
 	CardID       string         `json:"card_id"`
-	ActorUserID  string         `json:"actor_user_id"`
+	ActorUserID  *string        `json:"actor_user_id"`
 	ActorTokenID *string        `json:"actor_token_id"`
 	Action       string         `json:"action"`
 	Changes      map[string]any `json:"changes"`
@@ -236,8 +237,8 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	}
 	var card Card
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO cards (id,number,title,description,column_id,epic_id,group_id,assignee_id,position,due_at,created_by)
-		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),$9,$10,$11)
+		INSERT INTO cards (id,number,title,description,column_id,epic_id,group_id,assignee_id,position,due_at,created_by,column_entered_at)
+		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),$9,$10,$11,CURRENT_TIMESTAMP)
 		RETURNING id,number,title,description,column_id,epic_id,group_id,assignee_id,CAST(position AS TEXT),due_at,version,is_archived,created_by,created_at,updated_at`,
 		ids.New(), number, strings.TrimSpace(input.Title), input.Description, input.ColumnID, input.EpicID, input.GroupID, assigneeID, position, input.DueAt, actor.UserID,
 	).Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt)
@@ -253,6 +254,9 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 		return Card{}, err
 	}
 	if err := recordActivity(ctx, tx, actor, card.ID, "created", map[string]any{"version": card.Version}); err != nil {
+		return Card{}, err
+	}
+	if err := archive.RefreshProjects(ctx, tx, time.Now(), input.EpicID); err != nil {
 		return Card{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -370,6 +374,9 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if err != nil {
 		return Card{}, err
 	}
+	if current.IsArchived {
+		return Card{}, archive.ErrReadOnly
+	}
 	if current.Version != input.ExpectedVersion {
 		return Card{}, ErrVersionConflict
 	}
@@ -444,6 +451,9 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if err := recordActivity(ctx, tx, actor, cardID, "updated", map[string]any{"from_version": input.ExpectedVersion}); err != nil {
 		return Card{}, err
 	}
+	if err := archive.RefreshProjects(ctx, tx, time.Now(), value(current.EpicID), epicID); err != nil {
+		return Card{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Card{}, err
 	}
@@ -463,6 +473,9 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if err != nil {
 		return Card{}, err
 	}
+	if current.IsArchived {
+		return Card{}, archive.ErrReadOnly
+	}
 	if current.Version != input.ExpectedVersion {
 		return Card{}, ErrVersionConflict
 	}
@@ -474,7 +487,7 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if err != nil {
 		return Card{}, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE cards SET column_id=$3,position=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, input.TargetColumnID, position)
+	result, err := tx.ExecContext(ctx, `UPDATE cards SET column_entered_at=CASE WHEN column_id<>$3 THEN CURRENT_TIMESTAMP ELSE column_entered_at END,column_id=$3,position=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, input.TargetColumnID, position)
 	if err != nil {
 		return Card{}, err
 	}
@@ -482,6 +495,9 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 		return Card{}, ErrVersionConflict
 	}
 	if err := recordActivity(ctx, tx, actor, cardID, "moved", map[string]any{"from_column_id": current.ColumnID, "to_column_id": input.TargetColumnID}); err != nil {
+		return Card{}, err
+	}
+	if err := archive.RefreshProjects(ctx, tx, time.Now(), value(current.EpicID)); err != nil {
 		return Card{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -496,25 +512,13 @@ func (s *Service) SetArchived(ctx context.Context, actor Actor, cardID string, e
 		return Card{}, err
 	}
 	defer tx.Rollback()
-	current, err := getForUpdate(ctx, tx, cardID)
-	if err != nil {
-		return Card{}, err
-	}
-	if current.Version != expectedVersion {
-		return Card{}, ErrVersionConflict
-	}
-	result, err := tx.ExecContext(ctx, `UPDATE cards SET is_archived=$3,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, expectedVersion, archived)
-	if err != nil {
-		return Card{}, err
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		return Card{}, ErrVersionConflict
-	}
-	action := "archived"
-	if !archived {
-		action = "restored"
-	}
-	if err := recordActivity(ctx, tx, actor, cardID, action, map[string]any{"from_version": expectedVersion}); err != nil {
+	if err := archive.Card(ctx, tx, archive.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, cardID, expectedVersion, archived, "", time.Now()); err != nil {
+		if errors.Is(err, archive.ErrVersionConflict) {
+			return Card{}, ErrVersionConflict
+		}
+		if errors.Is(err, archive.ErrNotFound) {
+			return Card{}, ErrNotFound
+		}
 		return Card{}, err
 	}
 	if err := tx.Commit(); err != nil {

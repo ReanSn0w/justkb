@@ -16,6 +16,7 @@ type ReadyChecker interface {
 }
 
 type Dependencies struct {
+	Maintenance       *maintenance.Gate
 	Logger            *slog.Logger
 	StoragePath       string
 	Database          ReadyChecker
@@ -29,7 +30,10 @@ type Dependencies struct {
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	gate := &maintenance.Gate{}
+	gate := deps.Maintenance
+	if gate == nil {
+		gate = &maintenance.Gate{}
+	}
 	systemName := deps.SystemName
 	if systemName == "" {
 		systemName = "JKB"

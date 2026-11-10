@@ -5,6 +5,7 @@ import { ApiError, cardsApi, type Activity, type Card } from '../api'
 import { useBoardStore } from '../stores/board'
 import { useToastStore } from '../stores/toasts'
 import { prepared } from '../features/view-transitions'
+import { archiveError } from '../features/archive'
 import { boardReturnURL } from '../features/filters'
 import { renderMarkdown } from '../features/markdown'
 import BaseButton from '../components/ui/BaseButton.vue'
@@ -31,7 +32,7 @@ const cardLocation = (id: string, edit = false) => ({
   query: { return_to: returnTo.value },
 })
 const html = computed(() => renderMarkdown(card.value?.description || ''))
-const editing = computed(() => route.name === 'card-edit')
+const editing = computed(() => route.name === 'card-edit' && !card.value?.is_archived)
 const columnName = computed(
   () => board.columns.find((column) => column.id === card.value?.column_id)?.name || '—',
 )
@@ -106,9 +107,15 @@ async function toggleArchive() {
     !confirm(card.value.is_archived ? 'Восстановить карточку?' : 'Архивировать карточку?')
   )
     return
-  card.value = card.value.is_archived
-    ? await cardsApi.restore(card.value.id, card.value.version)
-    : await cardsApi.archive(card.value.id, card.value.version)
+  try {
+    card.value = card.value.is_archived
+      ? await cardsApi.restore(card.value.id, card.value.version)
+      : await cardsApi.archive(card.value.id, card.value.version)
+    await board.initialize()
+    activity.value = (await cardsApi.activity(card.value.id)).items
+  } catch (cause) {
+    error.value = archiveError(cause)
+  }
 }
 async function cancelEdit() {
   if (!card.value) return
@@ -139,14 +146,25 @@ function toggleTag(id: string) {
         <header class="level">
           <div class="level-left">
             <button class="button" @click="editing ? cancelEdit() : router.push(returnTo)">
-              {{ editing ? (returnToBoardAfterEdit ? 'Отмена' : '← Карточка') : '← Доска' }}
+              {{
+                editing
+                  ? returnToBoardAfterEdit
+                    ? 'Отмена'
+                    : '← Карточка'
+                  : returnTo.startsWith('/archive')
+                    ? '← Архив'
+                    : '← Доска'
+              }}
             </button>
           </div>
           <div class="level-item">
             <p class="card-number has-text-grey is-size-7">JKB-{{ card.number }}</p>
           </div>
           <div class="level-right">
-            <div v-if="editing" class="buttons">
+            <BaseButton v-if="card.is_archived" tone="quiet" @click="toggleArchive"
+              >Восстановить</BaseButton
+            >
+            <div v-else-if="editing" class="buttons">
               <BaseButton tone="quiet" @click="toggleArchive">{{
                 card.is_archived ? 'Восстановить' : 'В архив'
               }}</BaseButton>
@@ -282,7 +300,12 @@ function toggleTag(id: string) {
               :card="card"
               :column-name="columnName"
             />
-            <CommentPanel v-if="!editing" :entity-id="card.id" entity-type="card" />
+            <CommentPanel
+              v-if="!editing"
+              :entity-id="card.id"
+              entity-type="card"
+              :readonly="card.is_archived"
+            />
           </div>
           <div class="column">
             <CardInfoPanel
@@ -304,13 +327,17 @@ function toggleTag(id: string) {
               <div class="content">
                 <ol>
                   <li v-for="item in activity" :key="item.id" class="mb-4">
-                    <strong>{{ item.actor?.display_name || 'Пользователь' }}</strong>
+                    <strong>{{
+                      item.actor_user_id ? item.actor?.display_name || 'Пользователь' : 'Автоматика'
+                    }}</strong>
                     {{ item.action }}
                     <small class="is-block has-text-grey">
                       {{
-                        item.actor_token_id
-                          ? `через MCP${item.token_name ? ' · ' + item.token_name : ''}`
-                          : 'через веб'
+                        !item.actor_user_id
+                          ? 'системное правило'
+                          : item.actor_token_id
+                            ? `через MCP${item.token_name ? ' · ' + item.token_name : ''}`
+                            : 'через веб'
                       }}
                       · {{ new Date(item.created_at).toLocaleString() }}
                     </small>

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	internalAuth "github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
@@ -21,6 +22,7 @@ import (
 )
 
 type services struct {
+	archive  *archive.Service
 	auth     *internalAuth.Service
 	board    *board.Service
 	cards    *cards.Service
@@ -29,7 +31,7 @@ type services struct {
 }
 
 func NewHandler(db *sql.DB) http.Handler {
-	services := &services{auth: internalAuth.NewService(db), board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
+	services := &services{archive: archive.NewService(db), auth: internalAuth.NewService(db), board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "jkb", Version: "0.1.0"}, &mcp.ServerOptions{
 		Instructions:              "Manage the shared JKB kanban board. Call get_current_user before choosing assigned work. Read a card before mutating it and pass its current version as expected_version. Before starting work on a card or project, read its comments with list_comments because discussion may contain requirements not present in the description.",
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
@@ -53,6 +55,7 @@ func NewHandler(db *sql.DB) http.Handler {
 }
 
 func (s *services) addTools(server *mcp.Server) {
+	s.addArchiveTools(server)
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(false)}
 	closedWorld := &mcp.ToolAnnotations{OpenWorldHint: boolPointer(false)}
 
@@ -119,11 +122,13 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(item, err)
 	})
 	type epicInput struct {
-		EpicID      string  `json:"epic_id,omitempty"`
-		Name        string  `json:"name"`
-		Description *string `json:"description,omitempty"`
-		Color       string  `json:"color,omitempty"`
-		IsArchived  bool    `json:"is_archived,omitempty"`
+		RestoreMode     string  `json:"restore_mode"`
+		ExpectedVersion int64   `json:"expected_version"`
+		EpicID          string  `json:"epic_id,omitempty"`
+		Name            string  `json:"name"`
+		Description     *string `json:"description,omitempty"`
+		Color           string  `json:"color,omitempty"`
+		IsArchived      bool    `json:"is_archived,omitempty"`
 	}
 	saveEpic := func(ctx context.Context, input epicInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
@@ -136,7 +141,7 @@ func (s *services) addTools(server *mcp.Server) {
 		if input.Color == "" {
 			input.Color = "#00d1b2"
 		}
-		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived)
+		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, RestoreMode: input.RestoreMode})
 		return domainResult(item, err)
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
@@ -414,12 +419,26 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	code := "internal_error"
 	details := map[string]any{}
 	switch {
+	case errors.Is(err, archive.ErrVersionConflict):
+		code = "archive_version_conflict"
+	case errors.Is(err, archive.ErrNotFound):
+		code = "not_found"
+	case errors.Is(err, archive.ErrNameConflict):
+		code = "project_name_conflict"
+	case errors.Is(err, archive.ErrArchivedProject):
+		code = "project_archived"
+	case errors.Is(err, archive.ErrReadOnly):
+		code = "object_archived"
+	case errors.Is(err, archive.ErrValidation):
+		code = "validation_failed"
 	case appdb.IsBusy(err):
 		code = "database_busy"
 	case errors.Is(err, cards.ErrNotFound), errors.Is(err, board.ErrNotFound), errors.Is(err, comments.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, cards.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, comments.ErrValidation):
 		code = "validation_failed"
+	case errors.Is(err, board.ErrVersionConflict):
+		code = "project_version_conflict"
 	case errors.Is(err, cards.ErrVersionConflict):
 		code = "card_version_conflict"
 	}

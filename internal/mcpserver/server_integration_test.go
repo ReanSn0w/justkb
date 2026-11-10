@@ -80,7 +80,7 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Tools) != 21 {
+	if len(listed.Tools) != 23 {
 		t.Fatalf("tool count=%d", len(listed.Tools))
 	}
 	currentUser, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "get_current_user", Arguments: map[string]any{}})
@@ -190,5 +190,56 @@ func TestMCPIntegration(t *testing.T) {
 	}
 	if actorTokenID != created.ID {
 		t.Fatalf("actor token=%s want=%s", actorTokenID, created.ID)
+	}
+}
+
+func TestArchiveToolsEnforceRoleAndScope(t *testing.T) {
+	for _, tc := range []struct {
+		name, role        string
+		scopes            []string
+		readOK, restoreOK bool
+	}{
+		{"admin", "admin", []string{"cards:read", "cards:write"}, true, true},
+		{"member", "member", []string{"cards:read", "cards:write"}, true, false},
+		{"read-only", "admin", []string{"cards:read"}, true, false},
+		{"write-only", "admin", []string{"cards:write"}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := testdb.Open(t).DB
+			user, err := board.NewService(db).CreateUser(ctx, "actor", "Actor", "", tc.role, "correct horse battery staple")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO epics(id,name,color,is_archived) VALUES('p','Archived','#112233',1)`); err != nil {
+				t.Fatal(err)
+			}
+			token, err := tokens.NewService(db).Create(ctx, user.ID, "archive test", tc.scopes, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := httptest.NewServer(NewHandler(db))
+			defer server.Close()
+			client := mcp.NewClient(&mcp.Implementation{Name: "archive-test", Version: "1"}, nil)
+			session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: &http.Client{Transport: bearerTransport{secret: token.Secret, base: http.DefaultTransport}}, DisableStandaloneSSE: true}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_archive", Arguments: map[string]any{}})
+			if err != nil || result.IsError == tc.readOK {
+				t.Fatalf("read result=%+v err=%v", result, err)
+			}
+			result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "restore_epic", Arguments: map[string]any{"epic_id": "p", "expected_version": 1, "mode": "project_only"}})
+			if err != nil || result.IsError == tc.restoreOK {
+				t.Fatalf("restore result=%+v err=%v", result, err)
+			}
+			if tc.restoreOK {
+				var actor string
+				if err := db.QueryRow(`SELECT actor_user_id FROM archive_events WHERE entity_id='p'`).Scan(&actor); err != nil || actor != user.ID {
+					t.Fatalf("actor=%s err=%v", actor, err)
+				}
+			}
+		})
 	}
 }

@@ -24,6 +24,8 @@ describe('project directory', () => {
           color: '#00d1b2',
           is_archived: false,
           card_count: 3,
+          version: 1,
+          restorable_cards: 0,
           completed_card_count: 2,
           created_at: '',
           updated_at: '',
@@ -50,7 +52,7 @@ describe('project directory', () => {
       },
     })
     await flushPromises()
-    expect(epicsApi.list).toHaveBeenCalledWith(true)
+    expect(epicsApi.list).toHaveBeenCalledWith()
     expect(wrapper.text()).toContain('Platform')
     expect(wrapper.text()).not.toContain('Shared services')
     expect(wrapper.text()).toContain('3 задачи')

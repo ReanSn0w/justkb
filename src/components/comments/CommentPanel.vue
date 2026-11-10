@@ -7,7 +7,11 @@ import BaseButton from '../ui/BaseButton.vue'
 import StatusState from '../ui/StatusState.vue'
 import UserAvatar from '../user/UserAvatar.vue'
 
-const props = defineProps<{ entityId: string; entityType: 'card' | 'project' }>()
+const props = defineProps<{
+  entityId: string
+  entityType: 'card' | 'project'
+  readonly?: boolean
+}>()
 const items = ref<Comment[]>([])
 const body = ref('')
 const loading = ref(true)
@@ -28,7 +32,7 @@ async function load() {
 
 async function submit() {
   const value = body.value.trim()
-  if (!value || busy.value) return
+  if (!value || busy.value || props.readonly) return
   busy.value = true
   error.value = ''
   try {
@@ -49,7 +53,7 @@ onMounted(load)
 <template>
   <section class="box">
     <h2 class="title is-5">Комментарии</h2>
-    <form @submit.prevent="submit">
+    <form v-if="!readonly" @submit.prevent="submit">
       <div class="field">
         <div class="control">
           <textarea

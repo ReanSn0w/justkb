@@ -38,3 +38,14 @@ it('only accepts local board return URLs', () => {
     expect(boardReturnURL(value)).toBe('/')
   expect(boardReturnURL('/?q=hello&tag_id=a')).toBe('/?q=hello&tag_id=a')
 })
+it('accepts archive return filters but rejects archive-like external paths', () => {
+  expect(boardReturnURL('/archive?q=hello&history=true')).toBe('/archive?q=hello&history=true')
+  for (const value of [
+    '/archive//evil',
+    '/archive.evil',
+    '/archive/../login',
+    '//archive',
+    '/archive\\evil',
+  ])
+    expect(boardReturnURL(value)).toBe('/')
+})

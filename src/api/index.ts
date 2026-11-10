@@ -1,6 +1,10 @@
 import { download, json, request, upload } from './http'
 import type {
   Activity,
+  ArchivePolicy,
+  ArchivePreview,
+  ArchiveEvent,
+  ArchiveFilters,
   ApiToken,
   Attachment,
   BoardColumn,
@@ -126,3 +130,22 @@ export const adminApi = {
 }
 export { ApiError, setCsrfToken } from './http'
 export type * from './types'
+
+export const archiveApi = {
+  policy: () => request<ArchivePolicy>('/archive/policy'),
+  savePolicy: (policy: ArchivePolicy) =>
+    request<ArchivePolicy>(
+      '/archive/policy',
+      json('PUT', { ...policy, expected_version: policy.version }),
+    ),
+  preview: (policy: ArchivePolicy) =>
+    request<ArchivePreview>('/archive/policy/preview', json('POST', policy)),
+  list: (filters: ArchiveFilters = {}) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters))
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    return request<ListResult<ArchiveEvent>>(`/archive?${params}`)
+  },
+  restoreProject: (id: UUID, expected_version: number, mode: 'project_only' | 'with_cards') =>
+    request<Epic>(`/epics/${id}/restore`, json('POST', { expected_version, mode })),
+}

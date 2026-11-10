@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useSessionStore } from '../stores/session'
 import AppLayout from './AppLayout.vue'
 
-const mockedRoute = vi.hoisted(() => ({ name: 'board' }))
+const mockedRoute = vi.hoisted(() => ({ name: 'board', query: {} }))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -69,7 +69,7 @@ describe('application navigation', () => {
     mockedRoute.name = 'project'
     const projectLayout = mountLayout(pinia)
     const projectLinks = projectLayout.findAll('.navbar-start .navbar-item')
-    expect(projectLinks).toHaveLength(2)
+    expect(projectLinks).toHaveLength(3)
     expect(projectLinks[0]!.classes()).not.toContain('is-active')
     expect(projectLinks[1]!.classes()).toContain('is-active')
     expect(projectLinks[1]!.attributes('aria-current')).toBe('page')

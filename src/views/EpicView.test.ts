@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardsApi, directoryApi, epicsApi, type Card } from '../api'
 import EpicView from './EpicView.vue'
 
-const mockedRoute = vi.hoisted(() => ({ name: 'project', params: { id: 'project-1' } }))
+const mockedRoute = vi.hoisted(() => ({ name: 'project', query: {}, params: { id: 'project-1' } }))
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -50,6 +50,8 @@ describe('project details', () => {
       color: '#00d1b2',
       is_archived: false,
       card_count: 3,
+      version: 1,
+      restorable_cards: 0,
       completed_card_count: 1,
       created_at: '',
       updated_at: '',

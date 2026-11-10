@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/attachments"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/avatars"
@@ -28,6 +29,7 @@ import (
 const jsonBodyLimit = 1 << 20
 
 type api struct {
+	archive       *archive.Service
 	auth          *auth.Service
 	avatars       *avatars.Service
 	backups       *backups.Service
@@ -55,7 +57,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 		panic(err)
 	}
 	server := &api{
-		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
+		archive: archive.NewService(deps.DB),
+		auth:    auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
 		avatars:     avatarService,
 		backups:     backupService,
 		comments:    comments.NewService(deps.DB),
@@ -63,6 +66,11 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
 		tokens:       tokens.NewService(deps.DB),
 	}
+	mux.Handle("GET /api/v1/archive", server.member(http.HandlerFunc(server.listArchive)))
+	mux.Handle("GET /api/v1/archive/policy", server.member(http.HandlerFunc(server.archivePolicy)))
+	mux.Handle("PUT /api/v1/archive/policy", server.admin(http.HandlerFunc(server.saveArchivePolicy)))
+	mux.Handle("POST /api/v1/archive/policy/preview", server.admin(http.HandlerFunc(server.previewArchivePolicy)))
+	mux.Handle("POST /api/v1/epics/{id}/restore", server.admin(http.HandlerFunc(server.restoreProject)))
 	mux.HandleFunc("POST /api/v1/auth/login", server.login)
 	mux.Handle("POST /api/v1/auth/logout", server.member(http.HandlerFunc(server.logout)))
 	mux.Handle("GET /api/v1/auth/me", server.member(http.HandlerFunc(server.me)))
@@ -441,10 +449,12 @@ func (a *api) getEpic(w http.ResponseWriter, r *http.Request) {
 }
 
 type epicInput struct {
-	Name        string  `json:"name"`
-	Color       string  `json:"color"`
-	Description *string `json:"description"`
-	IsArchived  bool    `json:"is_archived"`
+	RestoreMode     string  `json:"restore_mode"`
+	ExpectedVersion int64   `json:"expected_version"`
+	Name            string  `json:"name"`
+	Color           string  `json:"color"`
+	Description     *string `json:"description"`
+	IsArchived      bool    `json:"is_archived"`
 }
 
 func (a *api) createEpic(w http.ResponseWriter, r *http.Request) {
@@ -452,7 +462,8 @@ func (a *api) createEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived)
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID}, RestoreMode: input.RestoreMode})
 	writeCreated(w, r, item, err)
 }
 func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +471,8 @@ func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived)
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID}, RestoreMode: input.RestoreMode})
 	writeItem(w, r, item, err)
 }
 
@@ -810,6 +822,18 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case errors.Is(err, archive.ErrVersionConflict):
+		status, code, message = http.StatusConflict, "archive_version_conflict", "Archive settings or object changed; reload before retrying"
+	case errors.Is(err, archive.ErrNotFound):
+		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
+	case errors.Is(err, archive.ErrNameConflict):
+		status, code, message = http.StatusConflict, "project_name_conflict", "An active project already uses this name"
+	case errors.Is(err, archive.ErrArchivedProject):
+		status, code, message = http.StatusConflict, "project_archived", "Restore the project first"
+	case errors.Is(err, archive.ErrReadOnly):
+		status, code, message = http.StatusConflict, "object_archived", "Restore the object before editing"
+	case errors.Is(err, archive.ErrValidation):
+		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Invalid archive operation"
 	case appdb.IsBusy(err):
 		status, code, message = http.StatusServiceUnavailable, "database_busy", "Database is busy; retry the request"
 	case errors.Is(err, auth.ErrInvalidCredentials):
@@ -818,8 +842,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
 	case errors.Is(err, auth.ErrValidation), errors.Is(err, board.ErrValidation), errors.Is(err, cards.ErrValidation), errors.Is(err, comments.ErrValidation), errors.Is(err, attachments.ErrTypeForbidden), errors.Is(err, avatars.ErrTypeForbidden), errors.Is(err, tokens.ErrInvalidScope), errors.Is(err, tokens.ErrInvalidToken):
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Validation failed"
+	case errors.Is(err, board.ErrVersionConflict):
+		status, code, message = http.StatusConflict, "project_version_conflict", "Project was changed by another actor"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
+	case errors.Is(err, board.ErrDoneColumn):
+		status, code, message = http.StatusConflict, "done_column_selected", "Select another done column before deleting this column"
 	case errors.Is(err, board.ErrColumnNotEmpty):
 		status, code, message = http.StatusConflict, "column_not_empty", "Column contains cards"
 	case errors.Is(err, board.ErrLastAdmin):

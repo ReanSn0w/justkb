@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 )
@@ -61,7 +62,7 @@ func TestReferenceDataIntegration(t *testing.T) {
 	if err != nil || detail.Name != "Platform" || detail.CardCount != 0 {
 		t.Fatalf("epic detail = %#v, err = %v", detail, err)
 	}
-	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true); err != nil {
+	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true, EpicSaveOptions{ExpectedVersion: epic.Version, Actor: archive.Actor{UserID: user.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	epics, err := service.ListEpics(ctx, false)
@@ -88,7 +89,7 @@ func TestReferenceDataIntegration(t *testing.T) {
 	}
 }
 
-func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
+func TestEpicProgressIncludesArchivedCardsInSelectedColumn(t *testing.T) {
 	db := testdb.Open(t).DB
 	ctx := context.Background()
 	service := NewService(db)
@@ -129,11 +130,30 @@ func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("epics=%#v err=%v", items, err)
 	}
-	if items[0].CardCount != 2 || items[0].CompletedCardCount != 1 {
+	if items[0].CardCount != 3 || items[0].CompletedCardCount != 2 {
 		t.Fatalf("epic progress=%#v", items[0])
 	}
 	detail, err := service.GetEpic(ctx, epic.ID)
-	if err != nil || detail.CardCount != 2 || detail.CompletedCardCount != 1 {
+	if err != nil || detail.CardCount != 3 || detail.CompletedCardCount != 2 {
 		t.Fatalf("epic detail=%#v err=%v", detail, err)
+	}
+}
+
+func TestEpicRejectsStaleUpdate(t *testing.T) {
+	service := NewService(testdb.Open(t).DB)
+	ctx := context.Background()
+	epic, err := service.SaveEpic(ctx, "", "Versioned", "#112233", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.SaveEpic(ctx, epic.ID, "Updated", epic.Color, nil, false, EpicSaveOptions{ExpectedVersion: epic.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.SaveEpic(ctx, epic.ID, "Lost", epic.Color, nil, false, EpicSaveOptions{ExpectedVersion: epic.Version}); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale update: %v", err)
+	}
+	current, err := service.GetEpic(ctx, epic.ID)
+	if err != nil || current.Name != "Updated" || current.Version != 2 {
+		t.Fatalf("current=%+v err=%v", current, err)
 	}
 }
