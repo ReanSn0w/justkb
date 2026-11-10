@@ -106,18 +106,19 @@ type MovementToken struct {
 }
 
 type Movement struct {
-	ID              string         `json:"id"`
-	CardID          string         `json:"card_id"`
-	CardNumber      int64          `json:"card_number"`
-	CardTitle       string         `json:"card_title"`
-	FromColumn      MovementColumn `json:"from_column"`
-	ToColumn        MovementColumn `json:"to_column"`
-	Actor           MovementActor  `json:"actor"`
-	ActorToken      *MovementToken `json:"actor_token,omitempty"`
-	CurrentAssignee *CardAssignee  `json:"current_assignee,omitempty"`
-	Project         *CardEpic      `json:"project,omitempty"`
-	Group           *CardGroup     `json:"group,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
+	ID               string         `json:"id"`
+	CardID           string         `json:"card_id"`
+	CardNumber       int64          `json:"card_number"`
+	CardTitle        string         `json:"card_title"`
+	FromColumn       MovementColumn `json:"from_column"`
+	ToColumn         MovementColumn `json:"to_column"`
+	Actor            MovementActor  `json:"actor"`
+	ActorToken       *MovementToken `json:"actor_token,omitempty"`
+	CurrentAssignee  *CardAssignee  `json:"current_assignee,omitempty"`
+	CurrentAssignees []CardAssignee `json:"current_assignees"`
+	Project          *CardEpic      `json:"project,omitempty"`
+	Group            *CardGroup     `json:"group,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
 }
 
 type MovementFilters struct {
@@ -565,7 +566,10 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 			actor.id,actor.display_name,activity.actor_token_id,actor_token.name,
 			assignee.id,assignee.display_name,assignee.avatar_url,
 			project.id,project.name,project.color,
-			card_group.id,card_group.name,activity.created_at
+			card_group.id,card_group.name,activity.created_at,
+			(SELECT json_group_array(json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) ORDER BY ca.position)
+			 FROM card_additional_assignees ca JOIN users u ON u.id=ca.user_id
+			 WHERE ca.card_id=card.id AND ca.user_id IS NOT card.assignee_id)
 		FROM card_activity activity
 		JOIN cards card ON card.id=activity.card_id
 		JOIN users actor ON actor.id=activity.actor_user_id
@@ -585,7 +589,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		add(` AND activity.actor_user_id=$%d`, filters.ActorUserID)
 	}
 	if filters.AssigneeID != "" {
-		add(` AND card.assignee_id=$%d`, filters.AssigneeID)
+		add(` AND (card.assignee_id=$%[1]d OR EXISTS (SELECT 1 FROM card_additional_assignees ca WHERE ca.card_id=card.id AND ca.user_id=$%[1]d))`, filters.AssigneeID)
 	}
 	if filters.EpicID != "" {
 		add(` AND card.epic_id=$%d`, filters.EpicID)
@@ -618,6 +622,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		var fromID, fromName, toID, toName sql.NullString
 		var tokenID, tokenName sql.NullString
 		var assigneeID, assigneeName, assigneeAvatar sql.NullString
+		var additional []byte
 		var projectID, projectName, projectColor sql.NullString
 		var groupID, groupName sql.NullString
 		if err := rows.Scan(
@@ -626,7 +631,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 			&item.Actor.ID, &item.Actor.DisplayName, &tokenID, &tokenName,
 			&assigneeID, &assigneeName, &assigneeAvatar,
 			&projectID, &projectName, &projectColor,
-			&groupID, &groupName, &item.CreatedAt,
+			&groupID, &groupName, &item.CreatedAt, &additional,
 		); err != nil {
 			return MovementPage{}, err
 		}
@@ -641,6 +646,15 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 				item.CurrentAssignee.AvatarURL = &assigneeAvatar.String
 			}
 		}
+		var others []CardAssignee
+		if err := json.Unmarshal(additional, &others); err != nil {
+			return MovementPage{}, err
+		}
+		item.CurrentAssignees = make([]CardAssignee, 0, len(others)+1)
+		if item.CurrentAssignee != nil {
+			item.CurrentAssignees = append(item.CurrentAssignees, *item.CurrentAssignee)
+		}
+		item.CurrentAssignees = append(item.CurrentAssignees, others...)
 		if projectID.Valid {
 			item.Project = &CardEpic{ID: projectID.String, Name: projectName.String, Color: projectColor.String}
 		}

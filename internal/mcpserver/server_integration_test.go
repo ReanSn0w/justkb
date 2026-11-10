@@ -11,6 +11,7 @@ import (
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
+	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -153,6 +154,25 @@ func TestMCPIntegration(t *testing.T) {
 	}})
 	if err != nil || assigned.IsError {
 		t.Fatalf("assign_card result=%#v err=%v", assigned, err)
+	}
+	reported, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_card_movements", Arguments: map[string]any{
+		"assignee_id": "extra", "card_id": cardID,
+		"from": time.Now().Add(-time.Hour).Format(time.RFC3339),
+		"to":   time.Now().Add(time.Hour).Format(time.RFC3339),
+	}})
+	if err != nil || reported.IsError {
+		t.Fatalf("additional assignee report=%#v err=%v", reported, err)
+	}
+	reportJSON, err := json.Marshal(reported.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report cards.MovementPage
+	if err := json.Unmarshal(reportJSON, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Items) != 1 || len(report.Items[0].CurrentAssignees) != 2 || report.Items[0].CurrentAssignees[1].ID != "extra" {
+		t.Fatalf("additional assignee report=%s", reportJSON)
 	}
 	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "assign_card", Arguments: map[string]any{
 		"card_id": cardID, "expected_version": version + 1, "assignee_id": nil,

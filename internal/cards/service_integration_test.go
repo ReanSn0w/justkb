@@ -211,3 +211,79 @@ func TestMultipleAssigneesKeepLegacyWritesAndFiltersCompatible(t *testing.T) {
 		t.Fatalf("filter none: %#v, %v", page, err)
 	}
 }
+
+func TestMovementReportIncludesAdditionalAssignees(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash,is_active)
+ VALUES ('primary','primary','Primary','unused',1), ('additional','additional','Additional','unused',1), ('other','other','Other','unused',1)`); err != nil {
+		t.Fatal(err)
+	}
+	var columnID string
+	if err := db.QueryRow(`SELECT id FROM board_columns ORDER BY position LIMIT 1`).Scan(&columnID); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	actor := Actor{UserID: "primary"}
+	card, err := service.Create(ctx, actor, CreateInput{Title: "Shared work", ColumnID: columnID, AssigneeIDs: []string{"primary", "additional"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		card, err = service.Move(ctx, actor, card.ID, MoveInput{ExpectedVersion: card.Version, TargetColumnID: columnID})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	filters := MovementFilters{From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour)}
+	for _, id := range []string{"", "primary", "additional"} {
+		t.Run("assignee="+id, func(t *testing.T) {
+			f := filters
+			f.AssigneeID = id
+			f.Limit = 1
+			page, err := service.ListMovements(ctx, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Items) != 1 || page.NextCursor == "" {
+				t.Fatalf("page=%#v", page)
+			}
+			first := page.Items[0]
+			if first.CurrentAssignee == nil || first.CurrentAssignee.ID != "primary" || len(first.CurrentAssignees) != 2 || first.CurrentAssignees[0].ID != "primary" || first.CurrentAssignees[1].ID != "additional" {
+				t.Fatalf("movement=%#v", first)
+			}
+			f.Cursor = page.NextCursor
+			next, err := service.ListMovements(ctx, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(next.Items) != 1 || next.Items[0].ID == first.ID || next.NextCursor != "" {
+				t.Fatalf("next=%#v", next)
+			}
+		})
+	}
+	filters.AssigneeID = "other"
+	page, err := service.ListMovements(ctx, filters)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("unrelated assignee: page=%#v err=%v", page, err)
+	}
+	_, err = service.Update(ctx, actor, card.ID, UpdateInput{ExpectedVersion: card.Version, AssigneeIDs: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	filters.AssigneeID = "additional"
+	page, err = service.ListMovements(ctx, filters)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("removed assignee: page=%#v err=%v", page, err)
+	}
+	filters.AssigneeID = ""
+	page, err = service.ListMovements(ctx, filters)
+	if err != nil || len(page.Items) != 2 {
+		t.Fatalf("unassigned movements: page=%#v err=%v", page, err)
+	}
+	for _, movement := range page.Items {
+		if movement.CurrentAssignee != nil || movement.CurrentAssignees == nil || len(movement.CurrentAssignees) != 0 {
+			t.Fatalf("unassigned movement=%#v", movement)
+		}
+	}
+}
