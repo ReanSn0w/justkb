@@ -6,8 +6,9 @@ const props = withDefaults(
   defineProps<{
     user?: Pick<User, 'display_name' | 'avatar_url'> | null
     size?: 24 | 32 | 48 | 64 | 96 | 128
+    as?: 'figure' | 'span'
   }>(),
-  { user: null, size: 32 },
+  { user: null, size: 32, as: 'figure' },
 )
 
 const initials = computed(() => {
@@ -29,7 +30,11 @@ const fallback = computed(() => {
 </script>
 
 <template>
-  <figure :class="['image', `is-${size}x${size}`]" :title="user?.display_name || 'Пользователь'">
+  <component
+    :is="as"
+    :class="['image', `is-${size}x${size}`]"
+    :title="user?.display_name || 'Пользователь'"
+  >
     <img
       class="is-rounded"
       :src="user?.avatar_url || fallback"
@@ -37,5 +42,5 @@ const fallback = computed(() => {
       :width="size"
       :height="size"
     />
-  </figure>
+  </component>
 </template>

@@ -114,6 +114,12 @@ export const useBoardStore = defineStore('board', () => {
     cards.value.push(card)
     return card
   }
+  async function assign(card: Card, assignee_id: string | null) {
+    const updated = await cardsApi.update(card.id, card.version, { assignee_id })
+    const current = cards.value.find((item) => item.id === updated.id)
+    if (current && current.version <= updated.version) Object.assign(current, updated)
+    if (filters.value.assignee_id || refreshing.value) await loadCards()
+  }
   async function move(
     card: Card,
     target_column_id: string,
@@ -150,6 +156,7 @@ export const useBoardStore = defineStore('board', () => {
     initialize,
     loadCards,
     create,
+    assign,
     move,
   }
 })
