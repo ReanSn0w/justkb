@@ -10,9 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/config"
 	"github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/httpapi"
+	"github.com/ReanSn0w/justkb/internal/maintenance"
 )
 
 func main() {
@@ -35,8 +37,10 @@ func main() {
 	}
 	defer db.Close()
 
+	gate := &maintenance.Gate{}
 	handler := httpapi.New(httpapi.Dependencies{
 		Logger:            logger,
+		Maintenance:       gate,
 		StoragePath:       cfg.StoragePath,
 		Database:          db,
 		DB:                db,
@@ -57,6 +61,9 @@ func main() {
 
 	shutdownContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); archive.NewService(db).Run(shutdownContext, gate, logger) }()
+	defer func() { stop(); <-workerDone }()
 
 	serverErrors := make(chan error, 1)
 	go func() {

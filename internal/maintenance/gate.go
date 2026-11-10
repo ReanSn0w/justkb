@@ -14,6 +14,13 @@ func (g *Gate) Exclusive(operation func() error) error {
 	return operation()
 }
 
+// Shared coordinates background database operations with backup and restore.
+func (g *Gate) Shared(operation func() error) error {
+	g.mutex.RLock()
+	defer g.mutex.RUnlock()
+	return operation()
+}
+
 func (g *Gate) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/v1/admin/backups") || strings.HasPrefix(r.URL.Path, "/health/") {
