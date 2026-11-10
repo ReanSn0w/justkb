@@ -22,6 +22,7 @@ const card: Card = {
     color: '#00d1b2',
     is_archived: false,
     card_count: 1,
+    restorable_cards: 0,
     completed_card_count: 0,
     version: 1,
   },

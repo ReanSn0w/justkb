@@ -22,6 +22,7 @@ import (
 )
 
 type services struct {
+	archive  *archive.Service
 	auth     *internalAuth.Service
 	board    *board.Service
 	cards    *cards.Service
@@ -30,7 +31,7 @@ type services struct {
 }
 
 func NewHandler(db *sql.DB) http.Handler {
-	services := &services{auth: internalAuth.NewService(db), board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
+	services := &services{archive: archive.NewService(db), auth: internalAuth.NewService(db), board: board.NewService(db), cards: cards.NewService(db), comments: comments.NewService(db), tokens: tokens.NewService(db)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "jkb", Version: "0.1.0"}, &mcp.ServerOptions{
 		Instructions:              "Manage the shared JKB kanban board. Call get_current_user before choosing assigned work. Read a card before mutating it and pass its current version as expected_version. Before starting work on a card or project, read its comments with list_comments because discussion may contain requirements not present in the description.",
 		SupportedProtocolVersions: []string{"2026-07-28", "2025-11-25"},
@@ -54,6 +55,7 @@ func NewHandler(db *sql.DB) http.Handler {
 }
 
 func (s *services) addTools(server *mcp.Server) {
+	s.addArchiveTools(server)
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(false)}
 	closedWorld := &mcp.ToolAnnotations{OpenWorldHint: boolPointer(false)}
 
@@ -417,6 +419,10 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	code := "internal_error"
 	details := map[string]any{}
 	switch {
+	case errors.Is(err, archive.ErrVersionConflict):
+		code = "archive_version_conflict"
+	case errors.Is(err, archive.ErrNotFound):
+		code = "not_found"
 	case errors.Is(err, archive.ErrNameConflict):
 		code = "project_name_conflict"
 	case errors.Is(err, archive.ErrArchivedProject):

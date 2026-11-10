@@ -377,3 +377,19 @@ HTML клиентских маршрутов содержит экраниров
 Журнал содержит сущность, действие, время, причину (`manual`, `automatic`, `legacy`), инициатора (`user`, `system`, `unknown`), группу операции и снимок названия/номера. Автоматика не выдаётся за пользователя; её `actor_user_id` равен null. Повторная команда без перехода не создаёт событие. Достоверные старые события карточек сохраняются; неизвестная дата старого проекта отображается как неизвестная.
 
 Архив по умолчанию показывает текущие архивные объекты по последней архивации; режим истории включает восстановления и прошлые циклы. Проектная операция группирует дочерние карточки. Выдача курсорная, упорядочена по времени и уникальному ID, поддерживает тип сущности, проект, текст, период и состояние. Неизвестные даты идут отдельно после известных. Ответ включает актуальное состояние и версию для восстановления.
+
+### Archive API
+
+| Метод | Путь | Доступ / вход |
+|---|---|---|
+| GET | `/api/v1/archive` | member; `type=card/project`, `project_id`, `q`, `from`, `to` (RFC3339, полуинтервал), `history`, `state=archived/restored/all`, `batch_id`, `cursor`, `limit` (1–100) |
+| GET | `/api/v1/archive/policy` | member |
+| PUT | `/api/v1/archive/policy` | admin; поля политики и `expected_version` |
+| POST | `/api/v1/archive/policy/preview` | admin; предлагаемая политика |
+| POST | `/api/v1/epics/{id}/restore` | admin; `expected_version`, `mode=project_only/with_cards` |
+
+`GET /epics/{id}` также возвращает `version` и `restorable_cards`. Старый `PATCH /epics/{id}` использует общую транзакцию; требует `expected_version`, при восстановлении — `restore_mode`. Создавать проект сразу архивным нельзя. MCP `update_epic` принимает те же поля, `list_archive` — фильтры архива (`cards:read`), `restore_epic` — `epic_id`, `expected_version`, `mode` (admin + `cards:write`). Настройки не изменяются через MCP.
+
+Список архива возвращает `{items,next_cursor}`. Запись: `id` (непрозрачный идентификатор события), `entity_type`, `entity_id`, `project_id`, `action`, `occurred_at` (nullable), `reason`, `actor_type`, `actor_name`, `batch_id`, `title`, `number`, `rule_days`, актуальные `is_archived`, `version`, `child_count`, `restorable_cards`. `batch_id` позволяет раскрыть карточки группы с отдельной пагинацией; фильтр `type=card` показывает карточки самостоятельно. `history=true` включает прошлые события; `state` фильтрует актуальное состояние объекта. Предпросмотр возвращает `{cards,projects}`; число карточек включает карточки проектов-кандидатов и не складывается с числом проектов.
+
+Конфликты HTTP 409: `project_version_conflict`, `archive_version_conflict`, `project_archived` (сначала восстановить проект), `object_archived` (сначала восстановить объект), `project_name_conflict`, `done_column_selected`. Неверный срок, столбец, режим или курсор — 422 `validation_failed`. Архивные объекты нельзя изменять, дополнять комментариями или изменять их вложения.

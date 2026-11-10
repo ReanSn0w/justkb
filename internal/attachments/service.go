@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
@@ -131,6 +132,9 @@ func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, origi
 		return Metadata{}, err
 	}
 	defer tx.Rollback()
+	if err := archive.EnsureEditable(ctx, tx, cardID, epicID); err != nil {
+		return Metadata{}, err
+	}
 	var metadata Metadata
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO attachments(id,card_id,epic_id,original_name,storage_name,media_type,size,created_by)
@@ -217,6 +221,16 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	var cardID, epicID string
+	if metadata.CardID != nil {
+		cardID = *metadata.CardID
+	}
+	if metadata.EpicID != nil {
+		epicID = *metadata.EpicID
+	}
+	if err := archive.EnsureEditable(ctx, tx, cardID, epicID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE id=$1`, id); err != nil {
 		return err
 	}

@@ -53,6 +53,7 @@ type Column struct {
 }
 
 type Epic struct {
+	RestorableCards    int       `json:"restorable_cards"`
 	Version            int64     `json:"version"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
@@ -396,7 +397,7 @@ func (s *Service) DeleteColumn(ctx context.Context, id string) error {
 
 func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,(SELECT count(*) FROM cards rc WHERE rc.epic_id=e.id AND rc.is_archived AND rc.archive_batch_id=e.archive_batch_id),e.created_at,e.updated_at,
 		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
@@ -411,7 +412,7 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 	items := make([]Epic, 0)
 	for rows.Next() {
 		var item Epic
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version, &item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version, &item.RestorableCards, &item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -422,14 +423,14 @@ func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, 
 func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	var item Epic
 	err := s.db.QueryRowContext(ctx, `
-		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
+		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,(SELECT count(*) FROM cards rc WHERE rc.epic_id=e.id AND rc.is_archived AND rc.archive_batch_id=e.archive_batch_id),e.created_at,e.updated_at,
 		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
 		         WHERE c.epic_id=e.id
 		           AND bc.id=(SELECT done_column_id FROM archive_policy))
 		FROM epics e WHERE e.id=$1`, id).Scan(
-		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version,
+		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version, &item.RestorableCards,
 		&item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

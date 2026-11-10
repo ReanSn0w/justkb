@@ -29,6 +29,7 @@ import (
 const jsonBodyLimit = 1 << 20
 
 type api struct {
+	archive       *archive.Service
 	auth          *auth.Service
 	avatars       *avatars.Service
 	backups       *backups.Service
@@ -56,7 +57,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 		panic(err)
 	}
 	server := &api{
-		auth: auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
+		archive: archive.NewService(deps.DB),
+		auth:    auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
 		avatars:     avatarService,
 		backups:     backupService,
 		comments:    comments.NewService(deps.DB),
@@ -64,6 +66,11 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 		loginLimiter: ratelimit.New(10, 15*time.Minute),
 		tokens:       tokens.NewService(deps.DB),
 	}
+	mux.Handle("GET /api/v1/archive", server.member(http.HandlerFunc(server.listArchive)))
+	mux.Handle("GET /api/v1/archive/policy", server.member(http.HandlerFunc(server.archivePolicy)))
+	mux.Handle("PUT /api/v1/archive/policy", server.admin(http.HandlerFunc(server.saveArchivePolicy)))
+	mux.Handle("POST /api/v1/archive/policy/preview", server.admin(http.HandlerFunc(server.previewArchivePolicy)))
+	mux.Handle("POST /api/v1/epics/{id}/restore", server.admin(http.HandlerFunc(server.restoreProject)))
 	mux.HandleFunc("POST /api/v1/auth/login", server.login)
 	mux.Handle("POST /api/v1/auth/logout", server.member(http.HandlerFunc(server.logout)))
 	mux.Handle("GET /api/v1/auth/me", server.member(http.HandlerFunc(server.me)))
@@ -815,6 +822,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case errors.Is(err, archive.ErrVersionConflict):
+		status, code, message = http.StatusConflict, "archive_version_conflict", "Archive settings or object changed; reload before retrying"
+	case errors.Is(err, archive.ErrNotFound):
+		status, code, message = http.StatusNotFound, "not_found", "Resource not found"
 	case errors.Is(err, archive.ErrNameConflict):
 		status, code, message = http.StatusConflict, "project_name_conflict", "An active project already uses this name"
 	case errors.Is(err, archive.ErrArchivedProject):

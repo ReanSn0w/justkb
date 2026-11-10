@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
+	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
 
@@ -87,31 +89,34 @@ func (s *Service) create(ctx context.Context, cardID, epicID string, actor Actor
 	if (cardID == "") == (epicID == "") || actor.UserID == "" || body == "" {
 		return Comment{}, ErrValidation
 	}
-	var exists bool
-	if cardID != "" {
-		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM cards WHERE id=$1)`, cardID).Scan(&exists); err != nil {
-			return Comment{}, err
-		}
-	} else if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM epics WHERE id=$1)`, epicID).Scan(&exists); err != nil {
+	tx, err := appdb.BeginWrite(ctx, s.db)
+	if err != nil {
 		return Comment{}, err
 	}
-	if !exists {
-		return Comment{}, ErrNotFound
+	defer tx.Rollback()
+	if err := archive.EnsureEditable(ctx, tx, cardID, epicID); err != nil {
+		if errors.Is(err, archive.ErrNotFound) {
+			return Comment{}, ErrNotFound
+		}
+		return Comment{}, err
 	}
 	var tokenID any
 	if actor.TokenID != "" {
 		tokenID = actor.TokenID
 	}
 	commentID := ids.New()
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO comments(id,card_id,epic_id,author_user_id,author_token_id,body)
 		VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,$5,$6)`,
 		commentID, cardID, epicID, actor.UserID, tokenID, body,
 	); err != nil {
 		return Comment{}, err
 	}
+	if err := tx.Commit(); err != nil {
+		return Comment{}, err
+	}
 	var item Comment
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT c.id,c.card_id,c.epic_id,c.author_user_id,c.author_token_id,c.body,c.created_at,c.updated_at,
 		       u.id,u.display_name,u.avatar_url
 		FROM comments c JOIN users u ON u.id=c.author_user_id

@@ -51,6 +51,7 @@ describe('project details', () => {
       is_archived: false,
       card_count: 3,
       version: 1,
+      restorable_cards: 0,
       completed_card_count: 1,
       created_at: '',
       updated_at: '',

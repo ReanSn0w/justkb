@@ -27,6 +27,7 @@ export interface BoardColumn extends Timestamps {
   wip_limit?: number | null
 }
 export interface Epic extends Timestamps {
+  restorable_cards: number
   version: number
   id: UUID
   name: string
@@ -154,4 +155,48 @@ export interface ApiToken extends Timestamps {
 }
 export interface IssuedToken extends ApiToken {
   token: string
+}
+
+export interface ArchivePolicy {
+  version: number
+  done_column_id: UUID | null
+  cards_enabled: boolean
+  cards_days: number
+  projects_enabled: boolean
+  projects_days: number
+}
+export interface ArchivePreview {
+  cards: number
+  projects: number
+}
+export interface ArchiveEvent {
+  id: string
+  entity_type: 'card' | 'project'
+  entity_id: UUID
+  project_id: UUID | null
+  action: 'archived' | 'restored'
+  occurred_at: string | null
+  reason: 'manual' | 'automatic' | 'legacy'
+  actor_type: 'user' | 'system' | 'unknown'
+  actor_name: string | null
+  batch_id: string | null
+  title: string
+  number: number | null
+  rule_days: number | null
+  is_archived: boolean
+  version: number
+  child_count: number
+  restorable_cards: number
+}
+export interface ArchiveFilters {
+  type?: 'card' | 'project' | ''
+  project_id?: UUID
+  q?: string
+  from?: string
+  to?: string
+  state?: 'archived' | 'restored' | 'all'
+  history?: boolean
+  cursor?: string
+  limit?: number
+  batch_id?: string
 }

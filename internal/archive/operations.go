@@ -87,9 +87,8 @@ func Card(ctx context.Context, tx *sql.Tx, actor Actor, id string, version int64
 	action := "archived"
 	if !archived {
 		action = "restored"
-		batch = ""
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE cards SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=NULLIF($4,''),column_entered_at=CASE WHEN $2 THEN column_entered_at ELSE $3 END,position=CASE WHEN $2 THEN position ELSE COALESCE((SELECT min(c.position)-1000 FROM cards c WHERE c.column_id=cards.column_id AND NOT c.is_archived),1000) END WHERE id=$1`, id, archived, stamp(now), batch)
+	_, err = tx.ExecContext(ctx, `UPDATE cards SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=CASE WHEN $2 THEN NULLIF($4,'') ELSE NULL END,column_entered_at=CASE WHEN $2 THEN column_entered_at ELSE $3 END,position=CASE WHEN $2 THEN position ELSE COALESCE((SELECT min(c.position)-1000 FROM cards c WHERE c.column_id=cards.column_id AND NOT c.is_archived),1000) END WHERE id=$1`, id, archived, stamp(now), batch)
 	if err != nil {
 		return err
 	}
@@ -176,3 +175,24 @@ func Project(ctx context.Context, tx *sql.Tx, actor Actor, id string, version in
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+func EnsureEditable(ctx context.Context, tx *sql.Tx, cardID, epicID string) error {
+	var archived bool
+	query := `SELECT is_archived FROM cards WHERE id=$1`
+	id := cardID
+	if cardID == "" {
+		query = `SELECT is_archived FROM epics WHERE id=$1`
+		id = epicID
+	}
+	err := tx.QueryRowContext(ctx, query, id).Scan(&archived)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if archived {
+		return ErrReadOnly
+	}
+	return nil
+}
