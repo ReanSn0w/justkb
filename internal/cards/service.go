@@ -55,27 +55,29 @@ type CardAssignee struct {
 }
 
 type Card struct {
-	ID          string        `json:"id"`
-	Number      int64         `json:"number"`
-	Title       string        `json:"title"`
-	Description string        `json:"description"`
-	ColumnID    string        `json:"column_id"`
-	EpicID      *string       `json:"epic_id"`
-	GroupID     *string       `json:"group_id"`
-	AssigneeID  *string       `json:"assignee_id"`
-	Position    string        `json:"position"`
-	DueAt       *time.Time    `json:"due_at"`
-	Version     int64         `json:"version"`
-	IsArchived  bool          `json:"is_archived"`
-	CreatedBy   string        `json:"created_by"`
-	TagIDs      []string      `json:"tag_ids"`
-	Tags        []Tag         `json:"tags"`
-	Epic        *CardEpic     `json:"epic"`
-	Group       *CardGroup    `json:"group"`
-	Assignee    *CardAssignee `json:"assignee"`
-	Attachments []Attachment  `json:"attachments"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	ID          string         `json:"id"`
+	Number      int64          `json:"number"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	ColumnID    string         `json:"column_id"`
+	EpicID      *string        `json:"epic_id"`
+	GroupID     *string        `json:"group_id"`
+	AssigneeID  *string        `json:"assignee_id"`
+	AssigneeIDs []string       `json:"assignee_ids"`
+	Position    string         `json:"position"`
+	DueAt       *time.Time     `json:"due_at"`
+	Version     int64          `json:"version"`
+	IsArchived  bool           `json:"is_archived"`
+	CreatedBy   string         `json:"created_by"`
+	TagIDs      []string       `json:"tag_ids"`
+	Tags        []Tag          `json:"tags"`
+	Epic        *CardEpic      `json:"epic"`
+	Group       *CardGroup     `json:"group"`
+	Assignee    *CardAssignee  `json:"assignee"`
+	Assignees   []CardAssignee `json:"assignees"`
+	Attachments []Attachment   `json:"attachments"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type Activity struct {
@@ -104,18 +106,19 @@ type MovementToken struct {
 }
 
 type Movement struct {
-	ID              string         `json:"id"`
-	CardID          string         `json:"card_id"`
-	CardNumber      int64          `json:"card_number"`
-	CardTitle       string         `json:"card_title"`
-	FromColumn      MovementColumn `json:"from_column"`
-	ToColumn        MovementColumn `json:"to_column"`
-	Actor           MovementActor  `json:"actor"`
-	ActorToken      *MovementToken `json:"actor_token,omitempty"`
-	CurrentAssignee *CardAssignee  `json:"current_assignee,omitempty"`
-	Project         *CardEpic      `json:"project,omitempty"`
-	Group           *CardGroup     `json:"group,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
+	ID               string         `json:"id"`
+	CardID           string         `json:"card_id"`
+	CardNumber       int64          `json:"card_number"`
+	CardTitle        string         `json:"card_title"`
+	FromColumn       MovementColumn `json:"from_column"`
+	ToColumn         MovementColumn `json:"to_column"`
+	Actor            MovementActor  `json:"actor"`
+	ActorToken       *MovementToken `json:"actor_token,omitempty"`
+	CurrentAssignee  *CardAssignee  `json:"current_assignee,omitempty"`
+	CurrentAssignees []CardAssignee `json:"current_assignees"`
+	Project          *CardEpic      `json:"project,omitempty"`
+	Group            *CardGroup     `json:"group,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
 }
 
 type MovementFilters struct {
@@ -149,6 +152,7 @@ type CreateInput struct {
 	EpicID      string
 	GroupID     string
 	AssigneeID  string
+	AssigneeIDs []string
 	TagIDs      []string
 	DueAt       *time.Time
 }
@@ -160,6 +164,7 @@ type UpdateInput struct {
 	EpicID          *string
 	GroupID         *string
 	AssigneeID      *string
+	AssigneeIDs     []string
 	TagIDs          *[]string
 	DueAt           **time.Time
 }
@@ -194,7 +199,7 @@ type Service struct{ db *sql.DB }
 func NewService(db *sql.DB) *Service { return &Service{db: db} }
 
 func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (Card, error) {
-	if actor.UserID == "" || strings.TrimSpace(input.Title) == "" || input.ColumnID == "" {
+	if actor.UserID == "" || strings.TrimSpace(input.Title) == "" || input.ColumnID == "" || (input.AssigneeID != "" && input.AssigneeIDs != nil) {
 		return Card{}, ErrValidation
 	}
 	tx, err := appdb.BeginWrite(ctx, s.db)
@@ -220,15 +225,29 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if err := tx.QueryRowContext(ctx, `UPDATE card_number_sequence SET next_number=next_number+1 WHERE singleton=1 RETURNING next_number-1`).Scan(&number); err != nil {
 		return Card{}, err
 	}
+	assigneeID := input.AssigneeID
+	if input.AssigneeIDs != nil {
+		if err := validateAssignees(ctx, tx, input.AssigneeIDs); err != nil {
+			return Card{}, err
+		}
+		if len(input.AssigneeIDs) > 0 {
+			assigneeID = input.AssigneeIDs[0]
+		}
+	}
 	var card Card
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO cards (id,number,title,description,column_id,epic_id,group_id,assignee_id,position,due_at,created_by)
 		VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),$9,$10,$11)
 		RETURNING id,number,title,description,column_id,epic_id,group_id,assignee_id,CAST(position AS TEXT),due_at,version,is_archived,created_by,created_at,updated_at`,
-		ids.New(), number, strings.TrimSpace(input.Title), input.Description, input.ColumnID, input.EpicID, input.GroupID, input.AssigneeID, position, input.DueAt, actor.UserID,
+		ids.New(), number, strings.TrimSpace(input.Title), input.Description, input.ColumnID, input.EpicID, input.GroupID, assigneeID, position, input.DueAt, actor.UserID,
 	).Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt)
 	if err != nil {
 		return Card{}, err
+	}
+	if len(input.AssigneeIDs) > 1 {
+		if err := replaceAdditionalAssignees(ctx, tx, card.ID, input.AssigneeIDs[1:]); err != nil {
+			return Card{}, err
+		}
 	}
 	if err := replaceTags(ctx, tx, card.ID, input.TagIDs); err != nil {
 		return Card{}, err
@@ -252,6 +271,8 @@ func (s *Service) Get(ctx context.Context, idOrNumber string) (Card, error) {
 	row := s.db.QueryRowContext(ctx, query, argument)
 	return scanCard(row)
 }
+
+const assigneeFilter = ` AND (c.assignee_id=$%[1]d OR EXISTS (SELECT 1 FROM card_additional_assignees ca WHERE ca.card_id=c.id AND ca.user_id=$%[1]d))`
 
 func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 	if filters.Limit <= 0 {
@@ -277,14 +298,14 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 		add(` AND c.group_id=$%d`, filters.GroupID)
 	}
 	if filters.AssigneeID == "none" {
-		query += ` AND c.assignee_id IS NULL`
+		query += ` AND c.assignee_id IS NULL AND NOT EXISTS (SELECT 1 FROM card_additional_assignees ca WHERE ca.card_id=c.id)`
 	} else if filters.AssigneeID == "me" {
 		if filters.CurrentUserID == "" {
 			return Page{}, ErrValidation
 		}
-		add(` AND c.assignee_id=$%d`, filters.CurrentUserID)
+		add(assigneeFilter, filters.CurrentUserID)
 	} else if filters.AssigneeID != "" {
-		add(` AND c.assignee_id=$%d`, filters.AssigneeID)
+		add(assigneeFilter, filters.AssigneeID)
 	}
 	if filters.ColumnID != "" {
 		add(` AND c.column_id=$%d`, filters.ColumnID)
@@ -337,7 +358,7 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 }
 
 func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input UpdateInput) (Card, error) {
-	if input.ExpectedVersion <= 0 {
+	if input.ExpectedVersion <= 0 || (input.AssigneeID != nil && input.AssigneeIDs != nil) {
 		return Card{}, ErrValidation
 	}
 	tx, err := appdb.BeginWrite(ctx, s.db)
@@ -375,8 +396,27 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if input.GroupID != nil {
 		groupID = *input.GroupID
 	}
-	if input.AssigneeID != nil {
-		assigneeID = *input.AssigneeID
+	assigneeIDs := input.AssigneeIDs
+	if input.AssigneeID != nil && *input.AssigneeID != assigneeID {
+		// A legacy write replaces only the primary assignee, preserving the others.
+		assigneeIDs = make([]string, 0, len(current.AssigneeIDs)+1)
+		if *input.AssigneeID != "" {
+			assigneeIDs = append(assigneeIDs, *input.AssigneeID)
+		}
+		for _, id := range current.AssigneeIDs {
+			if id != assigneeID && id != *input.AssigneeID {
+				assigneeIDs = append(assigneeIDs, id)
+			}
+		}
+	}
+	if assigneeIDs != nil {
+		if err := validateAssignees(ctx, tx, assigneeIDs); err != nil {
+			return Card{}, err
+		}
+		assigneeID = ""
+		if len(assigneeIDs) > 0 {
+			assigneeID, assigneeIDs = assigneeIDs[0], assigneeIDs[1:]
+		}
 	}
 	if input.DueAt != nil {
 		dueAt = *input.DueAt
@@ -390,6 +430,11 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return Card{}, ErrVersionConflict
+	}
+	if assigneeIDs != nil {
+		if err := replaceAdditionalAssignees(ctx, tx, cardID, assigneeIDs); err != nil {
+			return Card{}, err
+		}
 	}
 	if input.TagIDs != nil {
 		if err := replaceTags(ctx, tx, cardID, *input.TagIDs); err != nil {
@@ -521,7 +566,10 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 			actor.id,actor.display_name,activity.actor_token_id,actor_token.name,
 			assignee.id,assignee.display_name,assignee.avatar_url,
 			project.id,project.name,project.color,
-			card_group.id,card_group.name,activity.created_at
+			card_group.id,card_group.name,activity.created_at,
+			(SELECT json_group_array(json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) ORDER BY ca.position)
+			 FROM card_additional_assignees ca JOIN users u ON u.id=ca.user_id
+			 WHERE ca.card_id=card.id AND ca.user_id IS NOT card.assignee_id)
 		FROM card_activity activity
 		JOIN cards card ON card.id=activity.card_id
 		JOIN users actor ON actor.id=activity.actor_user_id
@@ -541,7 +589,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		add(` AND activity.actor_user_id=$%d`, filters.ActorUserID)
 	}
 	if filters.AssigneeID != "" {
-		add(` AND card.assignee_id=$%d`, filters.AssigneeID)
+		add(` AND (card.assignee_id=$%[1]d OR EXISTS (SELECT 1 FROM card_additional_assignees ca WHERE ca.card_id=card.id AND ca.user_id=$%[1]d))`, filters.AssigneeID)
 	}
 	if filters.EpicID != "" {
 		add(` AND card.epic_id=$%d`, filters.EpicID)
@@ -574,6 +622,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		var fromID, fromName, toID, toName sql.NullString
 		var tokenID, tokenName sql.NullString
 		var assigneeID, assigneeName, assigneeAvatar sql.NullString
+		var additional []byte
 		var projectID, projectName, projectColor sql.NullString
 		var groupID, groupName sql.NullString
 		if err := rows.Scan(
@@ -582,7 +631,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 			&item.Actor.ID, &item.Actor.DisplayName, &tokenID, &tokenName,
 			&assigneeID, &assigneeName, &assigneeAvatar,
 			&projectID, &projectName, &projectColor,
-			&groupID, &groupName, &item.CreatedAt,
+			&groupID, &groupName, &item.CreatedAt, &additional,
 		); err != nil {
 			return MovementPage{}, err
 		}
@@ -597,6 +646,15 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 				item.CurrentAssignee.AvatarURL = &assigneeAvatar.String
 			}
 		}
+		var others []CardAssignee
+		if err := json.Unmarshal(additional, &others); err != nil {
+			return MovementPage{}, err
+		}
+		item.CurrentAssignees = make([]CardAssignee, 0, len(others)+1)
+		if item.CurrentAssignee != nil {
+			item.CurrentAssignees = append(item.CurrentAssignees, *item.CurrentAssignee)
+		}
+		item.CurrentAssignees = append(item.CurrentAssignees, others...)
 		if projectID.Valid {
 			item.Project = &CardEpic{ID: projectID.String, Name: projectName.String, Color: projectColor.String}
 		}
@@ -623,15 +681,18 @@ const cardSelect = `
 	COALESCE((SELECT json_group_array(json_object('id',a.id,'original_name',a.original_name,'media_type',a.media_type,'size',a.size,'created_by',a.created_by,'created_at',strftime('%Y-%m-%dT%H:%M:%fZ',a.created_at))) FROM attachments a WHERE a.card_id=c.id),'[]'),
 	(SELECT json_object('id',e.id,'name',e.name,'color',e.color) FROM epics e WHERE e.id=c.epic_id),
 	(SELECT json_object('id',g.id,'name',g.name,'color',g.color) FROM user_groups g WHERE g.id=c.group_id),
-	(SELECT json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id)
+	(SELECT json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) FROM users u WHERE u.id=c.assignee_id),
+	(SELECT json_group_array(json_object('id',u.id,'display_name',u.display_name,'avatar_url',u.avatar_url) ORDER BY ca.position)
+	 FROM card_additional_assignees ca JOIN users u ON u.id=ca.user_id
+	 WHERE ca.card_id=c.id AND ca.user_id IS NOT c.assignee_id)
 	FROM cards c`
 
 type scanner interface{ Scan(...any) error }
 
 func scanCard(row scanner) (Card, error) {
 	var card Card
-	var tags, attachments, epic, group, assignee []byte
-	err := row.Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt, &tags, &attachments, &epic, &group, &assignee)
+	var tags, attachments, epic, group, assignee, additional []byte
+	err := row.Scan(&card.ID, &card.Number, &card.Title, &card.Description, &card.ColumnID, &card.EpicID, &card.GroupID, &card.AssigneeID, &card.Position, &card.DueAt, &card.Version, &card.IsArchived, &card.CreatedBy, &card.CreatedAt, &card.UpdatedAt, &tags, &attachments, &epic, &group, &assignee, &additional)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Card{}, ErrNotFound
 	}
@@ -663,7 +724,50 @@ func scanCard(row scanner) (Card, error) {
 			return Card{}, err
 		}
 	}
+	var others []CardAssignee
+	if err := json.Unmarshal(additional, &others); err != nil {
+		return Card{}, err
+	}
+	card.Assignees = make([]CardAssignee, 0, len(others)+1)
+	if card.Assignee != nil {
+		card.Assignees = append(card.Assignees, *card.Assignee)
+	}
+	card.Assignees = append(card.Assignees, others...)
+	card.AssigneeIDs = make([]string, 0, len(card.Assignees))
+	for _, assignee := range card.Assignees {
+		card.AssigneeIDs = append(card.AssigneeIDs, assignee.ID)
+	}
 	return card, nil
+}
+
+func validateAssignees(ctx context.Context, tx *sql.Tx, assigneeIDs []string) error {
+	seen := make(map[string]bool, len(assigneeIDs))
+	for _, id := range assigneeIDs {
+		if id == "" || seen[id] {
+			return ErrValidation
+		}
+		seen[id] = true
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id=$1)`, id).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrValidation
+		}
+	}
+	return nil
+}
+
+func replaceAdditionalAssignees(ctx context.Context, tx *sql.Tx, cardID string, assigneeIDs []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM card_additional_assignees WHERE card_id=$1`, cardID); err != nil {
+		return err
+	}
+	for index, id := range assigneeIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO card_additional_assignees(card_id,user_id,position) VALUES($1,$2,$3)`, cardID, id, index+1); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func getForUpdate(ctx context.Context, tx *sql.Tx, cardID string) (Card, error) {

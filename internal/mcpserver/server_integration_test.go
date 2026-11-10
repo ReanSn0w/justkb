@@ -11,6 +11,7 @@ import (
 
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
+	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 	"github.com/ReanSn0w/justkb/internal/tokens"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -140,6 +141,48 @@ func TestMCPIntegration(t *testing.T) {
 	conflictText, ok := conflict.Content[0].(*mcp.TextContent)
 	if !ok || !strings.Contains(conflictText.Text, "card_version_conflict") {
 		t.Fatalf("conflict content=%#v", conflict.Content)
+	}
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT version FROM cards WHERE id=$1`, cardID).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash) VALUES ('extra','extra','Extra','unused')`); err != nil {
+		t.Fatal(err)
+	}
+	assigned, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "assign_card", Arguments: map[string]any{
+		"card_id": cardID, "expected_version": version, "assignee_ids": []string{user.ID, "extra"},
+	}})
+	if err != nil || assigned.IsError {
+		t.Fatalf("assign_card result=%#v err=%v", assigned, err)
+	}
+	reported, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_card_movements", Arguments: map[string]any{
+		"assignee_id": "extra", "card_id": cardID,
+		"from": time.Now().Add(-time.Hour).Format(time.RFC3339),
+		"to":   time.Now().Add(time.Hour).Format(time.RFC3339),
+	}})
+	if err != nil || reported.IsError {
+		t.Fatalf("additional assignee report=%#v err=%v", reported, err)
+	}
+	reportJSON, err := json.Marshal(reported.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report cards.MovementPage
+	if err := json.Unmarshal(reportJSON, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Items) != 1 || len(report.Items[0].CurrentAssignees) != 2 || report.Items[0].CurrentAssignees[1].ID != "extra" {
+		t.Fatalf("additional assignee report=%s", reportJSON)
+	}
+	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "assign_card", Arguments: map[string]any{
+		"card_id": cardID, "expected_version": version + 1, "assignee_id": nil,
+	}})
+	if err != nil || cleared.IsError {
+		t.Fatalf("legacy clear result=%#v err=%v", cleared, err)
+	}
+	var primary string
+	if err := db.QueryRowContext(ctx, `SELECT assignee_id FROM cards WHERE id=$1`, cardID).Scan(&primary); err != nil || primary != "extra" {
+		t.Fatalf("legacy clear primary=%s err=%v", primary, err)
 	}
 	var actorTokenID string
 	if err := db.QueryRowContext(ctx, `SELECT actor_token_id FROM card_activity WHERE action='created' ORDER BY created_at DESC LIMIT 1`).Scan(&actorTokenID); err != nil {

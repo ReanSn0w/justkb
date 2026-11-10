@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import axe from 'axe-core'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cardsApi, type Card } from '../api'
@@ -8,6 +9,7 @@ import CardView from './CardView.vue'
 const mockedRoute = vi.hoisted(() => ({
   name: 'card',
   params: { id: 'card-1' },
+  query: {},
 }))
 
 vi.mock('vue-router', async () => {
@@ -23,7 +25,7 @@ vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api')
   return {
     ...actual,
-    cardsApi: { ...actual.cardsApi, get: vi.fn(), activity: vi.fn() },
+    cardsApi: { ...actual.cardsApi, get: vi.fn(), activity: vi.fn(), update: vi.fn() },
   }
 })
 
@@ -88,5 +90,53 @@ describe('card details layout', () => {
     expect(wrapper.find('comment-panel-stub').exists()).toBe(false)
     expect(wrapper.text()).toContain('Команда')
     expect(wrapper.text()).toContain('Без команды')
+  })
+
+  it('adds an assignee while keeping the inactive legacy assignee', async () => {
+    mockedRoute.name = 'card-edit'
+    const legacy = { id: 'legacy', display_name: 'Прежний исполнитель' }
+    const selected = { id: 'new', display_name: 'Новый исполнитель' }
+    useBoardStore().users = [
+      {
+        ...selected,
+        username: 'new',
+        role: 'member',
+        is_active: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ]
+    vi.mocked(cardsApi.get).mockResolvedValue({ ...card, assignee_id: legacy.id, assignee: legacy })
+    vi.mocked(cardsApi.update).mockResolvedValue({
+      ...card,
+      assignee_ids: [legacy.id, selected.id],
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    const select = wrapper.get<HTMLSelectElement>('#card-assignee-picker')
+    const remove = (name: string) => `[aria-label="Снять исполнителя: ${name}"]`
+    expect(wrapper.find(remove(legacy.display_name)).exists()).toBe(true)
+    expect(select.find(`option[value="${legacy.id}"]`).exists()).toBe(false)
+    document.body.append(wrapper.element)
+    const result = await axe.run(select.element.closest('.field')!, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(result.violations).toEqual([])
+    await select.setValue(selected.id)
+    expect(select.element.value).toBe('')
+    expect(wrapper.findAll('.card-assignee-badge')).toHaveLength(2)
+    await wrapper.get(remove(selected.display_name)).trigger('click')
+    expect(wrapper.findAll('.card-assignee-badge')).toHaveLength(1)
+    expect(document.activeElement).toBe(select.element)
+    expect(cardsApi.update).not.toHaveBeenCalled()
+    await select.setValue(selected.id)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(cardsApi.update).toHaveBeenCalledWith(
+      card.id,
+      card.version,
+      expect.objectContaining({ assignee_ids: [legacy.id, selected.id] }),
+    )
+    wrapper.unmount()
   })
 })
