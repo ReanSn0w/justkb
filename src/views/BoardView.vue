@@ -8,8 +8,10 @@ import CardTile from '../components/board/CardTile.vue'
 import BoardFilters from '../components/board/BoardFilters.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
+import BaseDialog from '../components/ui/BaseDialog.vue'
+import BaseField from '../components/ui/BaseField.vue'
 import { useToastStore } from '../stores/toasts'
-import type { Card } from '../api'
+import { ApiError, type Card } from '../api'
 import { filtersFromQuery, queryFromFilters, mergeFilterQuery } from '../features/filters'
 import { cardMoveReference } from '../features/card-order'
 const board = useBoardStore(),
@@ -23,6 +25,70 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let alive = true
 let syncing = false
 const signature = () => JSON.stringify(queryFromFilters(board.filters))
+const descriptionEditor = ref<Pick<Card, 'id' | 'version' | 'description'> | null>(null)
+const descriptionInput = ref<HTMLTextAreaElement | null>(null)
+const savingDescription = ref(false)
+const descriptionConflict = ref(false)
+const descriptionError = ref('')
+let descriptionTrigger: HTMLButtonElement | null = null
+
+async function editDescription(card: Card, trigger: HTMLButtonElement) {
+  descriptionTrigger = trigger
+  descriptionEditor.value = { id: card.id, version: card.version, description: card.description }
+  descriptionConflict.value = false
+  descriptionError.value = ''
+  await nextTick()
+  descriptionInput.value?.focus()
+}
+
+async function closeDescription() {
+  if (savingDescription.value) return
+  descriptionEditor.value = null
+  await nextTick()
+  descriptionTrigger?.focus()
+  descriptionTrigger = null
+}
+
+function keepDescriptionFocus(event: KeyboardEvent) {
+  const fields = (event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(
+    'button:enabled, textarea',
+  )
+  const first = fields[0]
+  const last = fields[fields.length - 1]
+  if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
+    event.preventDefault()
+    const next = event.shiftKey ? last : first
+    next?.focus()
+  }
+}
+
+async function saveDescription() {
+  const editor = descriptionEditor.value
+  if (!editor || savingDescription.value || descriptionConflict.value) return
+  descriptionError.value = ''
+  descriptionInput.value?.focus()
+  savingDescription.value = true
+  try {
+    await board.update(editor.id, editor.version, { description: editor.description })
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
+      descriptionConflict.value = true
+      const refreshed = await board.loadCards()
+      descriptionError.value = refreshed
+        ? 'Карточка изменилась. Скопируйте черновик и откройте редактор заново.'
+        : 'Карточка изменилась. Скопируйте черновик и перезагрузите доску.'
+    } else {
+      descriptionError.value = 'Не удалось сохранить описание. Попробуйте ещё раз.'
+    }
+    await nextTick()
+    descriptionInput.value?.focus()
+    return
+  } finally {
+    savingDescription.value = false
+  }
+  await closeDescription()
+}
+
 function scheduleLoad() {
   clearTimeout(timer)
   timer = setTimeout(async () => {
@@ -103,7 +169,7 @@ function initializeSorting() {
         group: 'board-cards',
         animation: 150,
         draggable: '[data-card-id]',
-        filter: '[data-card-assignee] button',
+        filter: '[data-card-assignee] button, [data-edit-description]',
         preventOnFilter: false,
         fallbackOnBody: true,
         swapThreshold: 0.65,
@@ -167,7 +233,11 @@ async function keyboard(card: Card, direction: -1 | 1) {
             </form>
             <div data-card-list :data-column-id="column.id">
               <div v-for="card in board.byColumn[column.id]" :key="card.id" :data-card-id="card.id">
-                <CardTile :card="card" @move="keyboard(card, $event)" />
+                <CardTile
+                  :card="card"
+                  @move="keyboard(card, $event)"
+                  @edit-description="editDescription(card, $event)"
+                />
               </div>
               <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
             </div>
@@ -177,4 +247,38 @@ async function keyboard(card: Card, direction: -1 | 1) {
       </div>
     </section>
   </div>
+  <BaseDialog
+    :open="Boolean(descriptionEditor)"
+    title="Описание карточки"
+    aria-label="Описание карточки"
+    @close="closeDescription"
+    @keydown.esc.prevent.stop="closeDescription"
+    @keydown.tab="keepDescriptionFocus"
+  >
+    <form v-if="descriptionEditor" id="board-description-form" @submit.prevent="saveDescription">
+      <BaseField label="Описание" for-id="board-description">
+        <textarea
+          id="board-description"
+          ref="descriptionInput"
+          v-model="descriptionEditor.description"
+          class="textarea"
+          rows="8"
+          :readonly="savingDescription"
+        />
+      </BaseField>
+      <p v-if="descriptionError" class="help is-danger" role="alert">{{ descriptionError }}</p>
+    </form>
+    <template #actions>
+      <BaseButton
+        type="submit"
+        form="board-description-form"
+        :disabled="savingDescription || descriptionConflict"
+      >
+        Сохранить
+      </BaseButton>
+      <BaseButton tone="quiet" :disabled="savingDescription" @click="closeDescription">
+        Отмена
+      </BaseButton>
+    </template>
+  </BaseDialog>
 </template>

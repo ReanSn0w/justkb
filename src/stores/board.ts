@@ -8,6 +8,7 @@ import {
   type BoardColumn,
   type Card,
   type CardFilters,
+  type CardPatch,
   type Epic,
   type Group,
   type MoveCardInput,
@@ -114,11 +115,16 @@ export const useBoardStore = defineStore('board', () => {
     cards.value.push(card)
     return card
   }
-  async function assign(card: Card, assignee_id: string | null) {
-    const updated = await cardsApi.update(card.id, card.version, { assignee_id })
+  async function update(cardID: string, version: number, patch: CardPatch) {
+    const updated = await cardsApi.update(cardID, version, patch)
     const current = cards.value.find((item) => item.id === updated.id)
     if (current && current.version <= updated.version) Object.assign(current, updated)
-    if (filters.value.assignee_id || refreshing.value) await loadCards()
+    if (
+      refreshing.value ||
+      (patch.assignee_id !== undefined && filters.value.assignee_id) ||
+      (patch.description !== undefined && filters.value.q)
+    )
+      await loadCards()
   }
   async function move(
     card: Card,
@@ -156,7 +162,7 @@ export const useBoardStore = defineStore('board', () => {
     initialize,
     loadCards,
     create,
-    assign,
+    update,
     move,
   }
 })

@@ -51,7 +51,7 @@ async function assign(assigneeID: string | null) {
   if (assigneeID === (props.card.assignee_id ?? null)) return
   savingAssignee.value = true
   try {
-    await board.assign(props.card, assigneeID)
+    await board.update(props.card.id, props.card.version, { assignee_id: assigneeID })
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
       const refreshed = await board.loadCards()
@@ -76,7 +76,7 @@ function cardURL(id: string) {
   }).fullPath
   return { path: `/cards/${id}`, query: { return_to: returnTo } }
 }
-defineEmits<{ move: [direction: -1 | 1] }>()
+defineEmits<{ move: [direction: -1 | 1]; editDescription: [trigger: HTMLButtonElement] }>()
 </script>
 <template>
   <article
@@ -87,12 +87,36 @@ defineEmits<{ move: [direction: -1 | 1] }>()
     @click="dismissAssigneeOnTileClick"
   >
     <div class="card-content p-4">
-      <RouterLink :to="cardURL(card.id)">
-        <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
-        <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
-          {{ card.title }}
-        </p>
-      </RouterLink>
+      <div class="is-flex is-justify-content-space-between is-align-items-flex-start">
+        <RouterLink class="card-title-link" :to="cardURL(card.id)">
+          <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
+          <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
+            {{ card.title }}
+          </p>
+        </RouterLink>
+        <button
+          type="button"
+          class="button is-small is-flex-shrink-0 ml-2"
+          data-edit-description
+          aria-label="Редактировать описание"
+          aria-haspopup="dialog"
+          @click="$emit('editDescription', $event.currentTarget as HTMLButtonElement)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m14 6 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11z" />
+          </svg>
+        </button>
+      </div>
       <div class="tags mt-4 mb-2" data-card-assignee @keydown.esc.stop="closeAssigneePicker">
         <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
         <ColorTag v-if="card.group" :color="card.group.color">{{ card.group.name }}</ColorTag>
@@ -180,6 +204,11 @@ defineEmits<{ move: [direction: -1 | 1] }>()
 </template>
 
 <style scoped>
+.card-title-link {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .assignee-badge {
   max-width: 100%;
 }

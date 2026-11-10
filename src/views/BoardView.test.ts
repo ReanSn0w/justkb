@@ -233,4 +233,70 @@ describe('board', () => {
     expect(tile.get('[aria-label="Сменить исполнителя: Борис"]').text()).toBe('Борис')
     wrapper.unmount()
   })
+
+  it('creates and edits a description on the board and discards cancelled edits', async () => {
+    vi.mocked(cardsApi.update).mockImplementation(async (_id, version, patch) => ({
+      ...initialCards[0]!,
+      description: patch.description!,
+      version: version + 1,
+    }))
+    const wrapper = await mountedBoard()
+    const pencil = wrapper.get('[data-card-id="1"] [data-edit-description]')
+    await pencil.trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+    const field = dialog.get('textarea')
+    expect(field.element.value).toBe('')
+    expect(document.activeElement).toBe(field.element)
+    const result = await axe.run(dialog.element, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(result.violations).toEqual([])
+
+    await field.setValue('Новое описание')
+    await dialog.get('form').trigger('submit')
+    await flushPromises()
+    expect(cardsApi.update).toHaveBeenNthCalledWith(1, '1', 1, { description: 'Новое описание' })
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(pencil.element)
+
+    await pencil.trigger('click')
+    expect(wrapper.get('textarea').element.value).toBe('Новое описание')
+    await wrapper.get('textarea').setValue('Отменённый черновик')
+    await wrapper.get('textarea').trigger('keydown.esc')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(cardsApi.update).toHaveBeenCalledTimes(1)
+
+    await pencil.trigger('click')
+    expect(wrapper.get('textarea').element.value).toBe('Новое описание')
+    await wrapper.get('textarea').setValue('')
+    await wrapper.get('[role="dialog"] form').trigger('submit')
+    await flushPromises()
+    expect(cardsApi.update).toHaveBeenNthCalledWith(2, '1', 2, { description: '' })
+    wrapper.unmount()
+  })
+
+  it('keeps the draft and prevents retrying a stale description after a version conflict', async () => {
+    vi.mocked(cardsApi.update).mockRejectedValueOnce(
+      new ApiError(409, 'card_version_conflict', 'Conflict'),
+    )
+    const wrapper = await mountedBoard()
+    vi.mocked(cardsApi.list).mockResolvedValueOnce({
+      ...empty,
+      items: [{ ...initialCards[0]!, description: 'С сервера', version: 2 }],
+    })
+    const pencil = wrapper.get('[data-card-id="1"] [data-edit-description]')
+    await pencil.trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+    await dialog.get('textarea').setValue('Мой черновик')
+    await dialog.get('form').trigger('submit')
+    await vi.waitFor(() =>
+      expect(dialog.get('[role="alert"]').text()).toContain('Карточка изменилась'),
+    )
+    expect(dialog.get('textarea').element.value).toBe('Мой черновик')
+    expect(dialog.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await dialog.get('textarea').trigger('keydown.esc')
+    await pencil.trigger('click')
+    expect(wrapper.get('textarea').element.value).toBe('С сервера')
+    wrapper.unmount()
+  })
 })
