@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
 )
@@ -370,6 +371,9 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if err != nil {
 		return Card{}, err
 	}
+	if current.IsArchived {
+		return Card{}, archive.ErrReadOnly
+	}
 	if current.Version != input.ExpectedVersion {
 		return Card{}, ErrVersionConflict
 	}
@@ -463,6 +467,9 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if err != nil {
 		return Card{}, err
 	}
+	if current.IsArchived {
+		return Card{}, archive.ErrReadOnly
+	}
 	if current.Version != input.ExpectedVersion {
 		return Card{}, ErrVersionConflict
 	}
@@ -496,25 +503,13 @@ func (s *Service) SetArchived(ctx context.Context, actor Actor, cardID string, e
 		return Card{}, err
 	}
 	defer tx.Rollback()
-	current, err := getForUpdate(ctx, tx, cardID)
-	if err != nil {
-		return Card{}, err
-	}
-	if current.Version != expectedVersion {
-		return Card{}, ErrVersionConflict
-	}
-	result, err := tx.ExecContext(ctx, `UPDATE cards SET is_archived=$3,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, expectedVersion, archived)
-	if err != nil {
-		return Card{}, err
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		return Card{}, ErrVersionConflict
-	}
-	action := "archived"
-	if !archived {
-		action = "restored"
-	}
-	if err := recordActivity(ctx, tx, actor, cardID, action, map[string]any{"from_version": expectedVersion}); err != nil {
+	if err := archive.Card(ctx, tx, archive.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, cardID, expectedVersion, archived, "", time.Now()); err != nil {
+		if errors.Is(err, archive.ErrVersionConflict) {
+			return Card{}, ErrVersionConflict
+		}
+		if errors.Is(err, archive.ErrNotFound) {
+			return Card{}, ErrNotFound
+		}
 		return Card{}, err
 	}
 	if err := tx.Commit(); err != nil {

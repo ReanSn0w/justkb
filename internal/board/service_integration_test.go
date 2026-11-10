@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 )
@@ -61,7 +62,7 @@ func TestReferenceDataIntegration(t *testing.T) {
 	if err != nil || detail.Name != "Platform" || detail.CardCount != 0 {
 		t.Fatalf("epic detail = %#v, err = %v", detail, err)
 	}
-	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true, epic.Version); err != nil {
+	if _, err := service.SaveEpic(ctx, epic.ID, epic.Name, epic.Color, nil, true, EpicSaveOptions{ExpectedVersion: epic.Version, Actor: archive.Actor{UserID: user.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	epics, err := service.ListEpics(ctx, false)
@@ -145,10 +146,10 @@ func TestEpicRejectsStaleUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.SaveEpic(ctx, epic.ID, "Updated", epic.Color, nil, false, epic.Version); err != nil {
+	if _, err = service.SaveEpic(ctx, epic.ID, "Updated", epic.Color, nil, false, EpicSaveOptions{ExpectedVersion: epic.Version}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.SaveEpic(ctx, epic.ID, "Lost", epic.Color, nil, false, epic.Version); !errors.Is(err, ErrVersionConflict) {
+	if _, err = service.SaveEpic(ctx, epic.ID, "Lost", epic.Color, nil, false, EpicSaveOptions{ExpectedVersion: epic.Version}); !errors.Is(err, ErrVersionConflict) {
 		t.Fatalf("stale update: %v", err)
 	}
 	current, err := service.GetEpic(ctx, epic.ID)

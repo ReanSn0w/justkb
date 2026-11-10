@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	internalAuth "github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/cards"
@@ -119,6 +120,7 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(item, err)
 	})
 	type epicInput struct {
+		RestoreMode     string  `json:"restore_mode"`
 		ExpectedVersion int64   `json:"expected_version"`
 		EpicID          string  `json:"epic_id,omitempty"`
 		Name            string  `json:"name"`
@@ -137,7 +139,7 @@ func (s *services) addTools(server *mcp.Server) {
 		if input.Color == "" {
 			input.Color = "#00d1b2"
 		}
-		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
+		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, RestoreMode: input.RestoreMode})
 		return domainResult(item, err)
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
@@ -415,6 +417,14 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	code := "internal_error"
 	details := map[string]any{}
 	switch {
+	case errors.Is(err, archive.ErrNameConflict):
+		code = "project_name_conflict"
+	case errors.Is(err, archive.ErrArchivedProject):
+		code = "project_archived"
+	case errors.Is(err, archive.ErrReadOnly):
+		code = "object_archived"
+	case errors.Is(err, archive.ErrValidation):
+		code = "validation_failed"
 	case appdb.IsBusy(err):
 		code = "database_busy"
 	case errors.Is(err, cards.ErrNotFound), errors.Is(err, board.ErrNotFound), errors.Is(err, comments.ErrNotFound):

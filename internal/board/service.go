@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
@@ -428,18 +429,27 @@ func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	return item, err
 }
 
-func (s *Service) SaveEpic(ctx context.Context, id, name, color string, description *string, archived bool, expectedVersion ...int64) (Epic, error) {
+type EpicSaveOptions struct {
+	ExpectedVersion int64
+	Actor           archive.Actor
+	RestoreMode     string
+}
+
+func (s *Service) SaveEpic(ctx context.Context, id, name, color string, description *string, archived bool, options ...EpicSaveOptions) (Epic, error) {
 	if strings.TrimSpace(name) == "" || !colorPattern.MatchString(color) {
 		return Epic{}, ErrValidation
 	}
 	if id == "" {
+		if archived {
+			return Epic{}, ErrValidation
+		}
 		id = ids.New()
 		_, err := s.db.ExecContext(ctx, `INSERT INTO epics(id,name,description,color,is_archived) VALUES($1,$2,$3,$4,$5)`, id, strings.TrimSpace(name), description, color, archived)
 		if err != nil {
 			return Epic{}, err
 		}
 	} else {
-		if len(expectedVersion) != 1 || expectedVersion[0] < 1 {
+		if len(options) != 1 || options[0].ExpectedVersion < 1 {
 			return Epic{}, ErrValidation
 		}
 		tx, err := appdb.BeginWrite(ctx, s.db)
@@ -453,12 +463,35 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 		} else if err != nil {
 			return Epic{}, err
 		}
-		if version != expectedVersion[0] {
+		if version != options[0].ExpectedVersion {
 			return Epic{}, ErrVersionConflict
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,is_archived=$5,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, strings.TrimSpace(name), description, color, archived); err != nil {
+
+		var currentArchived bool
+		var oldName, oldColor string
+		var oldDescription sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT is_archived,name,color,description FROM epics WHERE id=$1`, id).Scan(&currentArchived, &oldName, &oldColor, &oldDescription); err != nil {
 			return Epic{}, err
 		}
+		if currentArchived && (strings.TrimSpace(name) != oldName || color != oldColor || ((description != nil) != oldDescription.Valid) || (description != nil && *description != oldDescription.String)) {
+			return Epic{}, archive.ErrReadOnly
+		}
+		if currentArchived != archived {
+			if err := archive.Project(ctx, tx, options[0].Actor, id, version, archived, options[0].RestoreMode, time.Now()); err != nil {
+				return Epic{}, err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4 WHERE id=$1`, id, strings.TrimSpace(name), description, color); err != nil {
+				return Epic{}, err
+			}
+		} else {
+			if currentArchived {
+				return Epic{}, archive.ErrReadOnly
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE epics SET name=$2,description=$3,color=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, strings.TrimSpace(name), description, color); err != nil {
+				return Epic{}, err
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			return Epic{}, err
 		}

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/attachments"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/avatars"
@@ -441,6 +442,7 @@ func (a *api) getEpic(w http.ResponseWriter, r *http.Request) {
 }
 
 type epicInput struct {
+	RestoreMode     string  `json:"restore_mode"`
 	ExpectedVersion int64   `json:"expected_version"`
 	Name            string  `json:"name"`
 	Color           string  `json:"color"`
@@ -453,7 +455,8 @@ func (a *api) createEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.board.SaveEpic(r.Context(), "", input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID}, RestoreMode: input.RestoreMode})
 	writeCreated(w, r, item, err)
 }
 func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
@@ -461,7 +464,8 @@ func (a *api) updateEpic(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived, input.ExpectedVersion)
+	principal, _ := PrincipalFromContext(r.Context())
+	item, err := a.board.SaveEpic(r.Context(), r.PathValue("id"), input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID}, RestoreMode: input.RestoreMode})
 	writeItem(w, r, item, err)
 }
 
@@ -811,6 +815,14 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case errors.Is(err, archive.ErrNameConflict):
+		status, code, message = http.StatusConflict, "project_name_conflict", "An active project already uses this name"
+	case errors.Is(err, archive.ErrArchivedProject):
+		status, code, message = http.StatusConflict, "project_archived", "Restore the project first"
+	case errors.Is(err, archive.ErrReadOnly):
+		status, code, message = http.StatusConflict, "object_archived", "Restore the object before editing"
+	case errors.Is(err, archive.ErrValidation):
+		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Invalid archive operation"
 	case appdb.IsBusy(err):
 		status, code, message = http.StatusServiceUnavailable, "database_busy", "Database is busy; retry the request"
 	case errors.Is(err, auth.ErrInvalidCredentials):
