@@ -103,6 +103,8 @@ function initializeSorting() {
         group: 'board-cards',
         animation: 150,
         draggable: '[data-card-id]',
+        filter: '[data-edit-card]',
+        preventOnFilter: false,
         fallbackOnBody: true,
         swapThreshold: 0.65,
         onEnd: (event) => void reordered(event),

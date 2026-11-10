@@ -25,6 +25,7 @@ const route = useRoute(),
   loading = ref(!card.value),
   error = ref('')
 const returnTo = computed(() => boardReturnURL(route.query.return_to))
+const returnToBoardAfterEdit = computed(() => route.query.edit_return === 'board')
 const cardLocation = (id: string, edit = false) => ({
   path: `/cards/${id}${edit ? '/edit' : ''}`,
   query: { return_to: returnTo.value },
@@ -92,7 +93,7 @@ async function save() {
     })
     editedAssigneeIDs.value = undefined
     toasts.show('Карточка сохранена')
-    await router.push(cardLocation(card.value.id))
+    await router.push(returnToBoardAfterEdit.value ? returnTo.value : cardLocation(card.value.id))
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'card_version_conflict') {
       error.value = 'Карточка уже изменена другим участником. Перезагрузите данные.'
@@ -111,6 +112,10 @@ async function toggleArchive() {
 }
 async function cancelEdit() {
   if (!card.value) return
+  if (returnToBoardAfterEdit.value) {
+    await router.push(returnTo.value)
+    return
+  }
   card.value = await cardsApi.get(card.value.id)
   editedAssigneeIDs.value = undefined
   error.value = ''
@@ -134,7 +139,7 @@ function toggleTag(id: string) {
         <header class="level">
           <div class="level-left">
             <button class="button" @click="editing ? cancelEdit() : router.push(returnTo)">
-              {{ editing ? '← Карточка' : '← Доска' }}
+              {{ editing ? (returnToBoardAfterEdit ? 'Отмена' : '← Карточка') : '← Доска' }}
             </button>
           </div>
           <div class="level-item">
