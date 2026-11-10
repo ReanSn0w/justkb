@@ -9,24 +9,50 @@ defineProps<{ card: Card }>()
 const route = useRoute()
 const router = useRouter()
 const board = useBoardStore()
-function cardURL(id: string) {
+function cardURL(id: string, edit = false) {
   const returnTo = router.resolve({
     path: '/',
     query: mergeFilterQuery(route.query, board.filters),
   }).fullPath
-  return { path: `/cards/${id}`, query: { return_to: returnTo } }
+  return {
+    path: `/cards/${id}${edit ? '/edit' : ''}`,
+    query: { return_to: returnTo, ...(edit ? { edit_return: 'board' } : {}) },
+  }
 }
 defineEmits<{ move: [direction: -1 | 1] }>()
 </script>
 <template>
   <article class="card mb-4" tabindex="0" :aria-label="`JKB-${card.number}: ${card.title}`">
     <div class="card-content p-4">
-      <RouterLink :to="cardURL(card.id)">
-        <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
-        <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
-          {{ card.title }}
-        </p>
-      </RouterLink>
+      <div class="is-flex is-justify-content-space-between is-align-items-flex-start">
+        <RouterLink class="card-title-link" :to="cardURL(card.id)">
+          <p class="is-size-7 has-text-grey mb-2">JKB-{{ card.number }}</p>
+          <p :data-transition-key="`card-${card.id}`" class="has-text-weight-semibold">
+            {{ card.title }}
+          </p>
+        </RouterLink>
+        <RouterLink
+          :to="cardURL(card.id, true)"
+          class="button is-small is-flex-shrink-0 ml-2"
+          data-edit-card
+          :aria-label="`Редактировать карточку JKB-${card.number}`"
+          title="Редактировать карточку"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m14 6 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11z" />
+          </svg>
+        </RouterLink>
+      </div>
       <div class="tags mt-4 mb-2">
         <span v-if="card.epic" class="tag is-link">{{ card.epic.name }}</span>
         <ColorTag v-if="card.group" :color="card.group.color">{{ card.group.name }}</ColorTag>
@@ -63,3 +89,10 @@ defineEmits<{ move: [direction: -1 | 1] }>()
     </div>
   </article>
 </template>
+
+<style scoped>
+.card-title-link {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+</style>
