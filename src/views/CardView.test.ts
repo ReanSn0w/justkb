@@ -113,18 +113,23 @@ describe('card details layout', () => {
     })
     const wrapper = mountView()
     await flushPromises()
-    const fieldset = wrapper
-      .findAll('fieldset')
-      .find((field) => field.text().includes('Исполнители'))!
-    expect(fieldset.text()).toContain(legacy.display_name)
-    const fields = fieldset.findAll<HTMLInputElement>('input')
-    expect(fields[1]!.element.checked).toBe(true)
+    const select = wrapper.get<HTMLSelectElement>('#card-assignee-picker')
+    const remove = (name: string) => `[aria-label="Снять исполнителя: ${name}"]`
+    expect(wrapper.find(remove(legacy.display_name)).exists()).toBe(true)
+    expect(select.find(`option[value="${legacy.id}"]`).exists()).toBe(false)
     document.body.append(wrapper.element)
-    const result = await axe.run(fieldset.element, {
+    const result = await axe.run(select.element.closest('.field')!, {
       rules: { 'color-contrast': { enabled: false } },
     })
     expect(result.violations).toEqual([])
-    await fields[0]!.setValue(true)
+    await select.setValue(selected.id)
+    expect(select.element.value).toBe('')
+    expect(wrapper.findAll('.card-assignee-badge')).toHaveLength(2)
+    await wrapper.get(remove(selected.display_name)).trigger('click')
+    expect(wrapper.findAll('.card-assignee-badge')).toHaveLength(1)
+    expect(document.activeElement).toBe(select.element)
+    expect(cardsApi.update).not.toHaveBeenCalled()
+    await select.setValue(selected.id)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(cardsApi.update).toHaveBeenCalledWith(

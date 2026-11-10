@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, cardsApi, type Activity, type Card } from '../api'
 import { useBoardStore } from '../stores/board'
@@ -13,6 +13,7 @@ import StatusState from '../components/ui/StatusState.vue'
 import AttachmentPanel from '../components/card/AttachmentPanel.vue'
 import CardInfoPanel from '../components/card/CardInfoPanel.vue'
 import CommentPanel from '../components/comments/CommentPanel.vue'
+import UserAvatar from '../components/user/UserAvatar.vue'
 const route = useRoute(),
   router = useRouter(),
   board = useBoardStore(),
@@ -34,26 +35,33 @@ const columnName = computed(
   () => board.columns.find((column) => column.id === card.value?.column_id)?.name || '—',
 )
 const editedAssigneeIDs = ref<string[]>()
+const assigneeSelect = ref<HTMLSelectElement | null>(null)
 const assignedIDs = computed(
   () =>
     editedAssigneeIDs.value ??
     card.value?.assignee_ids ??
     (card.value?.assignee_id ? [card.value.assignee_id] : []),
 )
-const assignmentUsers = computed(() => {
+const selectedAssignees = computed(() => {
   const assigned = card.value?.assignees ?? (card.value?.assignee ? [card.value.assignee] : [])
-  return [
-    ...board.users,
-    ...assigned.filter((user) => !board.users.some(({ id }) => id === user.id)),
-  ]
+  const usersByID = new Map([...assigned, ...board.users].map((user) => [user.id, user]))
+  return assignedIDs.value.map((id) => usersByID.get(id)).filter((user) => user !== undefined)
 })
+const availableAssignees = computed(() =>
+  board.users.filter(({ id }) => !assignedIDs.value.includes(id)),
+)
 
-function toggleAssignee(id: string) {
-  if (!card.value) return
-  const current = assignedIDs.value
-  editedAssigneeIDs.value = current.includes(id)
-    ? current.filter((assigneeID) => assigneeID !== id)
-    : [...current, id]
+function addAssignee(event: Event) {
+  const select = event.currentTarget as HTMLSelectElement
+  const id = select.value
+  if (id && !assignedIDs.value.includes(id)) editedAssigneeIDs.value = [...assignedIDs.value, id]
+  select.value = ''
+}
+
+async function removeAssignee(id: string) {
+  editedAssigneeIDs.value = assignedIDs.value.filter((assigneeID) => assigneeID !== id)
+  await nextTick()
+  assigneeSelect.value?.focus()
 }
 
 onMounted(async () => {
@@ -104,6 +112,7 @@ async function toggleArchive() {
 async function cancelEdit() {
   if (!card.value) return
   card.value = await cardsApi.get(card.value.id)
+  editedAssigneeIDs.value = undefined
   error.value = ''
   await router.push(cardLocation(card.value.id))
 }
@@ -187,21 +196,50 @@ function toggleTag(id: string) {
                   </BaseField>
                 </div>
                 <div class="column is-half">
-                  <fieldset>
-                    <legend class="label">Исполнители</legend>
-                    <label
-                      v-for="user in assignmentUsers"
-                      :key="user.id"
-                      class="checkbox mr-4 mb-2"
-                    >
-                      <input
-                        type="checkbox"
-                        :checked="assignedIDs.includes(user.id)"
-                        @change="toggleAssignee(user.id)"
-                      />
-                      {{ user.display_name }}
-                    </label>
-                  </fieldset>
+                  <BaseField label="Исполнители" for-id="card-assignee-picker">
+                    <div v-if="selectedAssignees.length" class="tags mb-2">
+                      <div
+                        v-for="user in selectedAssignees"
+                        :key="user.id"
+                        class="tag is-info card-assignee-badge"
+                      >
+                        <UserAvatar
+                          :user="user"
+                          :size="24"
+                          class="is-flex-shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span class="card-assignee-name ml-1">{{ user.display_name }}</span>
+                        <button
+                          type="button"
+                          class="card-assignee-remove"
+                          :aria-label="`Снять исполнителя: ${user.display_name}`"
+                          @click="removeAssignee(user.id)"
+                        >
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="select is-fullwidth">
+                      <select
+                        id="card-assignee-picker"
+                        ref="assigneeSelect"
+                        :disabled="!availableAssignees.length"
+                        @change="addAssignee"
+                      >
+                        <option value="" disabled selected>
+                          {{
+                            availableAssignees.length
+                              ? 'Выберите исполнителя'
+                              : 'Нет доступных исполнителей'
+                          }}
+                        </option>
+                        <option v-for="user in availableAssignees" :key="user.id" :value="user.id">
+                          {{ user.display_name }}
+                        </option>
+                      </select>
+                    </div>
+                  </BaseField>
                 </div>
                 <div class="column is-half">
                   <BaseField label="Срок">
@@ -282,3 +320,27 @@ function toggleTag(id: string) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.card-assignee-badge {
+  max-width: 100%;
+}
+
+.card-assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-assignee-remove {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bulma-danger-25);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+</style>
