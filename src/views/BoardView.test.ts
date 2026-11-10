@@ -122,9 +122,16 @@ describe('board', () => {
     const list = wrapper.get<HTMLElement>('[data-column-id="a"]').element
     const moved = list.querySelector<HTMLElement>('[data-card-id="2"]')!
     const first = list.querySelector<HTMLElement>('[data-card-id="1"]')!
+    const oldIndex = Array.from(list.children).indexOf(moved)
     list.insertBefore(moved, first)
 
-    sortableState.options[0]!.onEnd({ item: moved, from: list, to: list, oldIndex: 1, newIndex: 0 })
+    sortableState.options[0]!.onEnd({
+      item: moved,
+      from: list,
+      to: list,
+      oldIndex,
+      newIndex: oldIndex - 1,
+    })
     await flushPromises()
 
     expect(cardsApi.move).toHaveBeenCalledWith('2', {
@@ -135,23 +142,71 @@ describe('board', () => {
     wrapper.unmount()
   })
 
-  it('moves a card after the last card in another column', async () => {
+  it('appends after the last card in another column', async () => {
     const wrapper = await mountedBoard()
     const from = wrapper.get<HTMLElement>('[data-column-id="a"]').element
     const to = wrapper.get<HTMLElement>('[data-column-id="b"]').element
     const moved = from.querySelector<HTMLElement>('[data-card-id="1"]')!
+    const oldIndex = Array.from(from.children).indexOf(moved)
     to.append(moved)
 
-    sortableState.options[0]!.onEnd({ item: moved, from, to, oldIndex: 0, newIndex: 1 })
+    sortableState.options[0]!.onEnd({
+      item: moved,
+      from,
+      to,
+      oldIndex,
+      newIndex: to.children.length - 1,
+    })
     await flushPromises()
 
     expect(cardsApi.move).toHaveBeenCalledWith('1', {
       expected_version: 1,
       target_column_id: 'b',
-      after_card_id: '3',
     })
     wrapper.unmount()
   })
+
+  it.each(['header', 'gutter', 'outside'])(
+    'handles a drop on %s when Sortable did not move the element',
+    async (area) => {
+      const wrapper = await mountedBoard()
+      const from = wrapper.get<HTMLElement>('[data-column-id="a"]').element
+      const targetColumn = wrapper.get('[data-column-id="b"]').element
+      const targetHeader = wrapper.get('[data-column-id="b"] header').element
+      const moved = from.querySelector<HTMLElement>('[data-card-id="1"]')!
+      const oldIndex = Array.from(from.children).indexOf(moved)
+      const originalEvent = new MouseEvent('drop', { clientX: 200, clientY: 100 })
+      const originalHitTest = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+      Object.defineProperty(document, 'elementFromPoint', {
+        configurable: true,
+        value: () => ({ header: targetHeader, gutter: targetColumn, outside: document.body })[area],
+      })
+      try {
+        sortableState.options[0]!.onEnd({
+          item: moved,
+          from,
+          to: from,
+          oldIndex,
+          newIndex: oldIndex,
+          originalEvent,
+        })
+        await flushPromises()
+        if (area === 'outside') {
+          expect(cardsApi.move).not.toHaveBeenCalled()
+        } else {
+          expect(cardsApi.move).toHaveBeenCalledWith('1', {
+            expected_version: 1,
+            target_column_id: 'b',
+          })
+          expect(wrapper.find('[data-column-id="b"] [data-card-id="1"]').exists()).toBe(true)
+        }
+      } finally {
+        if (originalHitTest) Object.defineProperty(document, 'elementFromPoint', originalHitTest)
+        else Reflect.deleteProperty(document, 'elementFromPoint')
+        wrapper.unmount()
+      }
+    },
+  )
 
   it('reloads server order when moving fails', async () => {
     vi.mocked(cardsApi.move).mockRejectedValueOnce(new Error('conflict'))
@@ -159,9 +214,16 @@ describe('board', () => {
     const from = wrapper.get<HTMLElement>('[data-column-id="a"]').element
     const to = wrapper.get<HTMLElement>('[data-column-id="b"]').element
     const moved = from.querySelector<HTMLElement>('[data-card-id="1"]')!
+    const oldIndex = Array.from(from.children).indexOf(moved)
     to.append(moved)
 
-    sortableState.options[0]!.onEnd({ item: moved, from, to, oldIndex: 0, newIndex: 1 })
+    sortableState.options[0]!.onEnd({
+      item: moved,
+      from,
+      to,
+      oldIndex,
+      newIndex: to.children.length - 1,
+    })
     await flushPromises()
 
     expect(cardsApi.list).toHaveBeenCalledTimes(2)

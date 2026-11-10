@@ -21,6 +21,7 @@ const board = useBoardStore(),
   route = useRoute(),
   router = useRouter()
 let sortables: Sortable[] = []
+const columnRow = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined
 let alive = true
 let syncing = false
@@ -146,14 +147,38 @@ async function add(column: string) {
     toasts.show('Не удалось создать карточку', 'error')
   }
 }
-async function reordered(event: SortableEvent) {
-  const cardID = (event.item as HTMLElement).dataset.cardId
-  const columnID = (event.to as HTMLElement).dataset.columnId
-  if (!cardID || !columnID || (event.from === event.to && event.oldIndex === event.newIndex)) return
+async function reordered(event: SortableEvent & { originalEvent?: MouseEvent | TouchEvent }) {
+  const { item, from, to, oldIndex, newIndex, originalEvent } = event
+  const pointer =
+    originalEvent && 'changedTouches' in originalEvent
+      ? originalEvent.changedTouches[0]
+      : originalEvent
+  const hit =
+    pointer && !originalEvent?.type.endsWith('cancel')
+      ? document.elementFromPoint(pointer.clientX, pointer.clientY)
+      : null
+  const destination = originalEvent ? hit?.closest<HTMLElement>('[data-card-list]') : to
+  const cardID = item.dataset.cardId
+  const columnID = destination?.dataset.columnId
+  const sameColumn = destination === from
+  const onControls = hit?.closest('header, form')
+  const placedAmongCards =
+    destination === to &&
+    (sameColumn ? !onControls : !originalEvent || Boolean(hit?.closest('[data-card-id]')))
+  const reference = placedAmongCards ? cardMoveReference(item) : {}
+  const changedOrder = from !== to || oldIndex !== newIndex
+
+  // Sortable moved the DOM directly. Restore it before Vue renders the saved order.
+  if (changedOrder && oldIndex !== undefined) {
+    const siblings = Array.from(from.children).filter((child) => child !== item)
+    from.insertBefore(item, siblings[oldIndex] ?? null)
+  }
+  columnRow.value?.style.removeProperty('min-height')
+  if (!cardID || !columnID || (sameColumn && (!placedAmongCards || !changedOrder))) return
   const card = board.cards.find((item) => item.id === cardID)
   if (!card) return
   try {
-    await board.move(card, columnID, cardMoveReference(event.item as HTMLElement))
+    await board.move(card, columnID, sameColumn || reference.before_card_id ? reference : {})
   } catch {
     board.cards = []
     await nextTick()
@@ -173,6 +198,10 @@ function initializeSorting() {
         preventOnFilter: false,
         fallbackOnBody: true,
         swapThreshold: 0.65,
+        onStart: () => {
+          const row = columnRow.value
+          if (row) row.style.minHeight = `${row.offsetHeight}px`
+        },
         onEnd: (event) => void reordered(event),
       }),
   )
@@ -200,49 +229,50 @@ async function keyboard(card: Card, direction: -1 | 1) {
   </section>
   <div v-else data-board-scroll class="is-overflow-x-auto" aria-label="Kanban-доска">
     <section class="section pt-0">
-      <div class="columns is-mobile is-variable is-4 is-flex-wrap-nowrap">
-        <div
+      <div
+        ref="columnRow"
+        class="columns is-mobile is-variable is-4 is-flex-wrap-nowrap is-align-items-stretch"
+      >
+        <section
           v-for="column in board.columns"
           :key="column.id"
-          class="column is-11-mobile is-6-tablet is-4-desktop is-3-widescreen is-flex-shrink-0"
+          class="column is-11-mobile is-6-tablet is-4-desktop is-3-widescreen is-flex-shrink-0 box mb-0 board-column"
+          data-card-list
+          :data-column-id="column.id"
         >
-          <section class="box p-4">
-            <header class="level is-mobile mb-4">
-              <div class="level-left">
-                <h2 class="title is-5 mb-0">{{ column.name }}</h2>
-              </div>
-              <div class="level-right">
-                <span class="tag"
-                  >{{ board.byColumn[column.id]?.length || 0
-                  }}<template v-if="column.wip_limit"> / {{ column.wip_limit }}</template></span
-                >
-              </div>
-            </header>
-            <form class="field has-addons mb-4" @submit.prevent="add(column.id)">
-              <div class="control is-expanded">
-                <input
-                  v-model="draft[column.id]"
-                  class="input"
-                  :aria-label="`Новая карточка в ${column.name}`"
-                  placeholder="Новая карточка…"
-                />
-              </div>
-              <div class="control">
-                <button class="button is-primary" aria-label="Создать карточку">+</button>
-              </div>
-            </form>
-            <div data-card-list :data-column-id="column.id">
-              <div v-for="card in board.byColumn[column.id]" :key="card.id" :data-card-id="card.id">
-                <CardTile
-                  :card="card"
-                  @move="keyboard(card, $event)"
-                  @edit-description="editDescription(card, $event)"
-                />
-              </div>
-              <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
+          <header class="level is-mobile mb-4">
+            <div class="level-left">
+              <h2 class="title is-5 mb-0">{{ column.name }}</h2>
             </div>
-          </section>
-        </div>
+            <div class="level-right">
+              <span class="tag"
+                >{{ board.byColumn[column.id]?.length || 0
+                }}<template v-if="column.wip_limit"> / {{ column.wip_limit }}</template></span
+              >
+            </div>
+          </header>
+          <form class="field has-addons mb-4" @submit.prevent="add(column.id)">
+            <div class="control is-expanded">
+              <input
+                v-model="draft[column.id]"
+                class="input"
+                :aria-label="`Новая карточка в ${column.name}`"
+                placeholder="Новая карточка…"
+              />
+            </div>
+            <div class="control">
+              <button class="button is-primary" aria-label="Создать карточку">+</button>
+            </div>
+          </form>
+          <div v-for="card in board.byColumn[column.id]" :key="card.id" :data-card-id="card.id">
+            <CardTile
+              :card="card"
+              @move="keyboard(card, $event)"
+              @edit-description="editDescription(card, $event)"
+            />
+          </div>
+          <StatusState v-if="!board.byColumn[column.id]?.length" title="Пока пусто" />
+        </section>
         <div class="section py-0 pl-0 ml-4 is-flex-shrink-0" aria-hidden="true"></div>
       </div>
     </section>
@@ -282,3 +312,25 @@ async function keyboard(card: Card, direction: -1 | 1) {
     </template>
   </BaseDialog>
 </template>
+
+<style scoped>
+.board-column {
+  position: relative;
+  isolation: isolate;
+  padding: calc(var(--bulma-column-gap) + 1rem);
+  background: none;
+  box-shadow: none;
+}
+
+/* Keep the visual gap inside the full-height drop surface. */
+.board-column::before {
+  position: absolute;
+  inset: var(--bulma-column-gap);
+  z-index: -1;
+  border-radius: var(--bulma-box-radius);
+  background: var(--bulma-box-background-color);
+  box-shadow: var(--bulma-box-shadow);
+  pointer-events: none;
+  content: '';
+}
+</style>
