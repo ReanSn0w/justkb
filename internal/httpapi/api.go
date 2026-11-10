@@ -835,6 +835,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusConflict, "project_version_conflict", "Project was changed by another actor"
 	case errors.Is(err, cards.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "card_version_conflict", "Card was changed by another actor"
+	case errors.Is(err, board.ErrDoneColumn):
+		status, code, message = http.StatusConflict, "done_column_selected", "Select another done column before deleting this column"
 	case errors.Is(err, board.ErrColumnNotEmpty):
 		status, code, message = http.StatusConflict, "column_not_empty", "Column contains cards"
 	case errors.Is(err, board.ErrLastAdmin):

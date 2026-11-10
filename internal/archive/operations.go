@@ -49,7 +49,7 @@ func event(ctx context.Context, tx *sql.Tx, actor Actor, kind, id, project, acti
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO archive_events(id,entity_type,entity_id,epic_id,action,occurred_at,reason,actor_type,actor_user_id,batch_id,title,number,rule_days) VALUES($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13)`, ids.New(), kind, id, project, action, now.UTC(), reason, actorType, user, batch, title, number, actor.RuleDays)
+	_, err = tx.ExecContext(ctx, `INSERT INTO archive_events(id,entity_type,entity_id,epic_id,action,occurred_at,reason,actor_type,actor_user_id,batch_id,title,number,rule_days) VALUES($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13)`, ids.New(), kind, id, project, action, stamp(now), reason, actorType, user, batch, title, number, actor.RuleDays)
 	return err
 }
 
@@ -89,18 +89,18 @@ func Card(ctx context.Context, tx *sql.Tx, actor Actor, id string, version int64
 		action = "restored"
 		batch = ""
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE cards SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=NULLIF($4,''),column_entered_at=CASE WHEN $2 THEN column_entered_at ELSE $3 END,position=CASE WHEN $2 THEN position ELSE COALESCE((SELECT min(c.position)-1000 FROM cards c WHERE c.column_id=cards.column_id AND NOT c.is_archived),1000) END WHERE id=$1`, id, archived, now.UTC(), batch)
+	_, err = tx.ExecContext(ctx, `UPDATE cards SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=NULLIF($4,''),column_entered_at=CASE WHEN $2 THEN column_entered_at ELSE $3 END,position=CASE WHEN $2 THEN position ELSE COALESCE((SELECT min(c.position)-1000 FROM cards c WHERE c.column_id=cards.column_id AND NOT c.is_archived),1000) END WHERE id=$1`, id, archived, stamp(now), batch)
 	if err != nil {
 		return err
 	}
 	payload, _ := json.Marshal(map[string]any{"from_version": version, "batch_id": batch})
-	if _, err = tx.ExecContext(ctx, `INSERT INTO card_activity(id,card_id,actor_user_id,actor_token_id,actor_type,action,changes,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, ids.New(), id, user, token, actorType, action, string(payload), now.UTC()); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO card_activity(id,card_id,actor_user_id,actor_token_id,actor_type,action,changes,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, ids.New(), id, user, token, actorType, action, string(payload), stamp(now)); err != nil {
 		return err
 	}
 	if err = event(ctx, tx, actor, "card", id, epic.String, action, batch, title, number, now); err != nil {
 		return err
 	}
-	return nil
+	return RefreshProjects(ctx, tx, now, epic.String)
 }
 
 // Project restores only members of the most recent archive batch. A subsequent
@@ -140,7 +140,7 @@ func Project(ctx context.Context, tx *sql.Tx, actor Actor, id string, version in
 	if !archived {
 		action = "restored"
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE epics SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=$4,completed_since=CASE WHEN NOT $2 AND completed_since IS NOT NULL THEN $3 ELSE completed_since END WHERE id=$1`, id, archived, now.UTC(), batch); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE epics SET is_archived=$2,version=version+1,updated_at=$3,archive_batch_id=$4,completed_since=CASE WHEN NOT $2 AND completed_since IS NOT NULL THEN $3 ELSE completed_since END WHERE id=$1`, id, archived, stamp(now), batch); err != nil {
 		return err
 	}
 	if archived || mode == "with_cards" {
@@ -174,3 +174,5 @@ func Project(ctx context.Context, tx *sql.Tx, actor Actor, id string, version in
 	}
 	return event(ctx, tx, actor, "project", id, id, action, batch, title, nil, now)
 }
+
+func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }

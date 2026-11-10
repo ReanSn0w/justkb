@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	ErrDoneColumn      = errors.New("select another done column before deleting this column")
 	ErrVersionConflict = errors.New("project version conflict")
 	ErrNotFound        = errors.New("not found")
 	ErrValidation      = errors.New("validation failed")
@@ -368,6 +369,14 @@ func (s *Service) ReorderColumns(ctx context.Context, ids []string) error {
 }
 
 func (s *Service) DeleteColumn(ctx context.Context, id string) error {
+	var selected bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM archive_policy WHERE done_column_id=$1)`, id).Scan(&selected); err != nil {
+		return err
+	}
+	if selected {
+		return ErrDoneColumn
+	}
+
 	var count int
 	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM cards WHERE column_id = $1`, id).Scan(&count); err != nil {
 		return err
@@ -388,11 +397,11 @@ func (s *Service) DeleteColumn(ctx context.Context, id string) error {
 func (s *Service) ListEpics(ctx context.Context, includeArchived bool) ([]Epic, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
-		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
-		         WHERE c.epic_id=e.id AND NOT c.is_archived
-		           AND bc.position=(SELECT max(position) FROM board_columns))
+		         WHERE c.epic_id=e.id
+		           AND bc.id=(SELECT done_column_id FROM archive_policy))
 		FROM epics e WHERE $1 OR NOT e.is_archived
 		ORDER BY e.is_archived,lower(e.name),e.id`, includeArchived)
 	if err != nil {
@@ -414,11 +423,11 @@ func (s *Service) GetEpic(ctx context.Context, id string) (Epic, error) {
 	var item Epic
 	err := s.db.QueryRowContext(ctx, `
 		SELECT e.id,e.name,e.description,e.color,e.is_archived,e.version,e.created_at,e.updated_at,
-		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id AND NOT c.is_archived),
+		       (SELECT count(*) FROM cards c WHERE c.epic_id=e.id),
 		       (SELECT count(*)
 		          FROM cards c JOIN board_columns bc ON bc.id=c.column_id
-		         WHERE c.epic_id=e.id AND NOT c.is_archived
-		           AND bc.position=(SELECT max(position) FROM board_columns))
+		         WHERE c.epic_id=e.id
+		           AND bc.id=(SELECT done_column_id FROM archive_policy))
 		FROM epics e WHERE e.id=$1`, id).Scan(
 		&item.ID, &item.Name, &item.Description, &item.Color, &item.IsArchived, &item.Version,
 		&item.CreatedAt, &item.UpdatedAt, &item.CardCount, &item.CompletedCardCount,

@@ -287,3 +287,53 @@ func TestMovementReportIncludesAdditionalAssignees(t *testing.T) {
 		}
 	}
 }
+
+func TestColumnTimerOnlyChangesOnEntry(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	user, err := auth.NewService(db).CreateAdmin(ctx, "timer", "Timer", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db)
+	actor := Actor{UserID: user.ID}
+	var done, other string
+	if err := db.QueryRow(`SELECT done_column_id FROM archive_policy`).Scan(&done); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM board_columns WHERE id<>$1 LIMIT 1`, done).Scan(&other); err != nil {
+		t.Fatal(err)
+	}
+	c, err := service.Create(ctx, actor, CreateInput{Title: "Timer", ColumnID: done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE cards SET column_entered_at='2020-01-01 00:00:00' WHERE id=$1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err = service.Move(ctx, actor, c.ID, MoveInput{ExpectedVersion: c.Version, TargetColumnID: done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := "Changed"
+	c, err = service.Update(ctx, actor, c.ID, UpdateInput{ExpectedVersion: c.Version, Description: &description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before time.Time
+	if err := db.QueryRow(`SELECT column_entered_at FROM cards WHERE id=$1`, c.ID).Scan(&before); err != nil || before.Year() != 2020 {
+		t.Fatalf("timer reset by edit: %v %v", before, err)
+	}
+	c, err = service.Move(ctx, actor, c.ID, MoveInput{ExpectedVersion: c.Version, TargetColumnID: other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err = service.Move(ctx, actor, c.ID, MoveInput{ExpectedVersion: c.Version, TargetColumnID: done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var after time.Time
+	if err := db.QueryRow(`SELECT column_entered_at FROM cards WHERE id=$1`, c.ID).Scan(&after); err != nil || !after.After(before) {
+		t.Fatalf("timer not reset: %v %v", after, err)
+	}
+}

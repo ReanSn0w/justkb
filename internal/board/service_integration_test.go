@@ -89,7 +89,7 @@ func TestReferenceDataIntegration(t *testing.T) {
 	}
 }
 
-func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
+func TestEpicProgressIncludesArchivedCardsInSelectedColumn(t *testing.T) {
 	db := testdb.Open(t).DB
 	ctx := context.Background()
 	service := NewService(db)
@@ -130,11 +130,11 @@ func TestEpicProgressCountsOnlyActiveCardsInLastColumn(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("epics=%#v err=%v", items, err)
 	}
-	if items[0].CardCount != 2 || items[0].CompletedCardCount != 1 {
+	if items[0].CardCount != 3 || items[0].CompletedCardCount != 2 {
 		t.Fatalf("epic progress=%#v", items[0])
 	}
 	detail, err := service.GetEpic(ctx, epic.ID)
-	if err != nil || detail.CardCount != 2 || detail.CompletedCardCount != 1 {
+	if err != nil || detail.CardCount != 3 || detail.CompletedCardCount != 2 {
 		t.Fatalf("epic detail=%#v err=%v", detail, err)
 	}
 }
