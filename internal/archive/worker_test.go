@@ -86,3 +86,50 @@ func TestWorkerReReadsPolicyAfterMaintenance(t *testing.T) {
 		t.Fatalf("stale policy: %d %v", n, err)
 	}
 }
+
+func TestWorkerIndependentDurationsAndIncompleteProjects(t *testing.T) {
+	db := fixture(t)
+	ctx := context.Background()
+	s := NewService(db)
+	now := time.Now().UTC()
+	s.now = func() time.Time { return now }
+	gate := &maintenance.Gate{}
+	if err := write(t, db, func(tx *sql.Tx) error { return RefreshProjects(ctx, tx, now.Add(-4*24*time.Hour), "p") }); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Policy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.CardsEnabled = true
+	p.ProjectsEnabled = true
+	p.CardsDays = 3
+	p.ProjectsDays = 7
+	if _, err = s.SavePolicy(ctx, p, p.Version); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.RunOnce(ctx, gate)
+	if err != nil || result.Cards != 3 || result.Projects != 0 {
+		t.Fatalf("independent durations: %+v %v", result, err)
+	}
+	now = now.Add(3 * 24 * time.Hour)
+	result, err = s.RunOnce(ctx, gate)
+	if err != nil || result.Projects != 1 {
+		t.Fatalf("archived cards still complete project: %+v %v", result, err)
+	}
+}
+func TestRoundedProgressNeverArchivesIncompleteProject(t *testing.T) {
+	db := fixture(t)
+	ctx := context.Background()
+	s := NewService(db)
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	_, err := db.Exec(`DELETE FROM cards;WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<201) INSERT INTO cards(id,number,title,column_id,epic_id,position,created_by,column_entered_at) SELECT 'c'||x,x,'Task',CASE WHEN x=201 THEN (SELECT id FROM board_columns ORDER BY position LIMIT 1) ELSE (SELECT done_column_id FROM archive_policy) END,'p',x*100,'u','2020-01-01' FROM n;UPDATE epics SET completed_since='2020-01-01';UPDATE archive_policy SET projects_enabled=1;INSERT INTO epics(id,name,color,completed_since) VALUES('empty','Empty','#112233','2020-01-01');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.RunOnce(ctx, &maintenance.Gate{})
+	if err != nil || result.Projects != 0 {
+		t.Fatalf("rounded/empty project: %+v %v", result, err)
+	}
+}

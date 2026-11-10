@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/auth"
 	"github.com/ReanSn0w/justkb/internal/board"
+	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
@@ -335,5 +337,85 @@ func TestColumnTimerOnlyChangesOnEntry(t *testing.T) {
 	var after time.Time
 	if err := db.QueryRow(`SELECT column_entered_at FROM cards WHERE id=$1`, c.ID).Scan(&after); err != nil || !after.After(before) {
 		t.Fatalf("timer not reset: %v %v", after, err)
+	}
+}
+
+func TestMoveAndAutomaticArchiveSerialize(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash) VALUES('race','race','Race','unused');UPDATE archive_policy SET cards_enabled=1`); err != nil {
+		t.Fatal(err)
+	}
+	var done, other string
+	if err := db.QueryRow(`SELECT done_column_id FROM archive_policy`).Scan(&done); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT id FROM board_columns WHERE id<>$1 LIMIT 1`, done).Scan(&other); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(db)
+	actor := Actor{UserID: "race"}
+	for i := 0; i < 10; i++ {
+		c, err := s.Create(ctx, actor, CreateInput{Title: "Concurrent", ColumnID: done})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE cards SET column_entered_at='2020-01-01' WHERE id=$1`, c.ID); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		moved := make(chan error, 1)
+		archived := make(chan error, 1)
+		go func() {
+			<-start
+			_, err := s.Move(ctx, actor, c.ID, MoveInput{ExpectedVersion: 1, TargetColumnID: other})
+			moved <- err
+		}()
+		go func() { <-start; _, err := archive.NewService(db).RunOnce(ctx, &maintenance.Gate{}); archived <- err }()
+		close(start)
+		moveErr := <-moved
+		if err := <-archived; err != nil {
+			t.Fatal(err)
+		}
+		current, err := s.Get(ctx, c.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.IsArchived {
+			if current.ColumnID != done || !errors.Is(moveErr, archive.ErrReadOnly) {
+				t.Fatalf("archive winner: %+v %v", current, moveErr)
+			}
+		} else if current.ColumnID != other || moveErr != nil {
+			t.Fatalf("move winner: %+v %v", current, moveErr)
+		}
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM archive_events WHERE entity_id=$1`, c.ID).Scan(&count); err != nil || count > 1 {
+			t.Fatalf("duplicate event: %d %v", count, err)
+		}
+	}
+}
+
+func TestChangingCardProjectRefreshesBothCompletionIntervals(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx := context.Background()
+	s := NewService(db)
+	if _, err := db.Exec(`INSERT INTO users(id,username,display_name,password_hash) VALUES('u','u','User','unused');INSERT INTO epics(id,name,color) VALUES('a','A','#112233'),('b','B','#112233');`); err != nil {
+		t.Fatal(err)
+	}
+	var done string
+	if err := db.QueryRow(`SELECT done_column_id FROM archive_policy`).Scan(&done); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.Create(ctx, Actor{UserID: "u"}, CreateInput{Title: "Done", ColumnID: done, EpicID: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := "b"
+	if _, err = s.Update(ctx, Actor{UserID: "u"}, c.ID, UpdateInput{ExpectedVersion: c.Version, EpicID: &next}); err != nil {
+		t.Fatal(err)
+	}
+	var completed int
+	if err := db.QueryRow(`SELECT count(*) FROM epics WHERE (id='a' AND completed_since IS NULL) OR (id='b' AND completed_since IS NOT NULL)`).Scan(&completed); err != nil || completed != 2 {
+		t.Fatalf("both intervals=%d err=%v", completed, err)
 	}
 }

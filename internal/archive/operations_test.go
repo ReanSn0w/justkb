@@ -99,3 +99,24 @@ func TestArchiveIsAtomicIdempotentAndSystemAttributed(t *testing.T) {
 		t.Fatalf("partial restoration=%d err=%v", n, err)
 	}
 }
+
+func TestProjectRestoreExcludesChangedBatchMembership(t *testing.T) {
+	db := fixture(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := write(t, db, func(tx *sql.Tx) error { return Project(ctx, tx, Actor{UserID: "u"}, "p", 1, true, "", now) }); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate imported/reconciled data: a later independent archive and a moved
+	// card must never be pulled back merely because the original batch contained it.
+	if _, err := db.Exec(`UPDATE cards SET archive_batch_id=NULL WHERE id='a';UPDATE cards SET epic_id=NULL WHERE id='b'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := write(t, db, func(tx *sql.Tx) error { return Project(ctx, tx, Actor{UserID: "u"}, "p", 2, false, "with_cards", now) }); err != nil {
+		t.Fatal(err)
+	}
+	var ids string
+	if err := db.QueryRow(`SELECT group_concat(id) FROM cards WHERE NOT is_archived`).Scan(&ids); err != nil || ids != "c" {
+		t.Fatalf("restored=%s err=%v", ids, err)
+	}
+}

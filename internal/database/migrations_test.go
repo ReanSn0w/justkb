@@ -67,7 +67,7 @@ func TestAdditionalAssigneesMigrationPreservesLegacyCards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.Up(db, directory); err != nil {
+	if err := goose.UpTo(db, directory, 5); err != nil {
 		t.Fatal(err)
 	}
 	var preserved int

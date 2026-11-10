@@ -95,7 +95,7 @@ func (s *Service) List(ctx context.Context, f Filters) (Page, error) {
 		add(` AND a.epic_id=$%d`, f.ProjectID)
 	}
 	if f.Query != "" {
-		add(` AND instr(lower(a.title||' '||COALESCE(a.number,'')),lower($%d))>0`, strings.TrimSpace(f.Query))
+		add(` AND instr(jkb_lower(a.title||' '||COALESCE(a.number,'')),jkb_lower($%d))>0`, strings.TrimSpace(f.Query))
 	}
 	if f.From != "" {
 		add(` AND julianday(a.occurred_at)>=julianday($%d)`, f.From)
@@ -119,7 +119,7 @@ func (s *Service) List(ctx context.Context, f Filters) (Page, error) {
 	if f.BatchID != "" {
 		add(` AND a.batch_id=$%d`, f.BatchID)
 		query += ` AND a.entity_type='card'`
-	} else if f.Type != "card" {
+	} else if f.Type != "card" && strings.TrimSpace(f.Query) == "" {
 		query += ` AND (a.entity_type='project' OR a.batch_id IS NULL OR NOT EXISTS(SELECT 1 FROM archive_events parent JOIN epics ep ON ep.id=parent.entity_id WHERE parent.entity_type='project' AND parent.batch_id=a.batch_id AND parent.action=a.action`
 		if !f.History {
 			query += ` AND ep.is_archived AND ep.archive_batch_id=a.batch_id`

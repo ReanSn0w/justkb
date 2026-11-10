@@ -64,3 +64,19 @@ func TestTimelinePaginationGroupingAndHistory(t *testing.T) {
 		t.Fatalf("children=%+v err=%v", child, err)
 	}
 }
+
+func TestSearchFindsCardInsideProjectBatchInRussian(t *testing.T) {
+	db := fixture(t)
+	ctx := context.Background()
+	s := NewService(db)
+	if _, err := db.Exec(`UPDATE cards SET title='ПРОВЕРИТЬ Документацию' WHERE id='a'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := write(t, db, func(tx *sql.Tx) error { return Project(ctx, tx, Actor{UserID: "u"}, "p", 1, true, "", time.Now()) }); err != nil {
+		t.Fatal(err)
+	}
+	page, err := s.List(ctx, Filters{Query: "проверить документацию"})
+	if err != nil || len(page.Items) != 1 || page.Items[0].EntityID != "a" {
+		t.Fatalf("search=%+v err=%v", page, err)
+	}
+}

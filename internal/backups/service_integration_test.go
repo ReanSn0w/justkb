@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	archiving "github.com/ReanSn0w/justkb/internal/archive"
 	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/testdb"
@@ -120,5 +121,37 @@ func assertRestoredState(t *testing.T, service *Service, userID, storedFile, dis
 	}
 	if string(content) != fileWant {
 		t.Fatalf("file=%q want %q", content, fileWant)
+	}
+}
+
+func TestArchiveWorkerUsesRestoredPolicyAndHistory(t *testing.T) {
+	ctx, service, userID, _, cleanup := backupFixture(t)
+	defer cleanup()
+	_, err := service.db.Exec(`INSERT INTO cards(id,number,title,column_id,position,created_by,column_entered_at) VALUES('due',1,'Due',(SELECT done_column_id FROM archive_policy),100,$1,'2020-01-01');UPDATE archive_policy SET cards_enabled=1`, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := service.Create(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Close()
+	worker := archiving.NewService(service.db)
+	gate := service.gate.(*maintenance.Gate)
+	pass, err := worker.RunOnce(ctx, gate)
+	if err != nil || pass.Cards != 1 {
+		t.Fatalf("first pass=%+v %v", pass, err)
+	}
+	if _, err := service.db.Exec(`UPDATE archive_policy SET cards_enabled=0`); err != nil {
+		t.Fatal(err)
+	}
+	restoreArchive(t, ctx, service, snapshot.Path)
+	pass, err = worker.RunOnce(ctx, gate)
+	if err != nil || pass.Cards != 1 {
+		t.Fatalf("restored policy=%+v %v", pass, err)
+	}
+	var n int
+	if err := service.db.QueryRow(`SELECT count(*) FROM archive_events WHERE entity_id='due'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("restored history=%d %v", n, err)
 	}
 }
