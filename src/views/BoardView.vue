@@ -140,7 +140,7 @@ async function keyboard(card: Card, direction: -1 | 1) {
           :key="column.id"
           class="column is-11-mobile is-6-tablet is-4-desktop is-3-widescreen is-flex-shrink-0"
         >
-          <section class="box p-4">
+          <section class="box p-4" style="height: 100%">
             <header class="level is-mobile mb-4">
               <div class="level-left">
                 <h2 class="title is-5 mb-0">{{ column.name }}</h2>
