@@ -130,7 +130,22 @@ func (s *services) addTools(server *mcp.Server) {
 		Color           string  `json:"color,omitempty"`
 		IsArchived      bool    `json:"is_archived,omitempty"`
 	}
-	saveEpic := func(ctx context.Context, input epicInput) (*mcp.CallToolResult, any, error) {
+	saveEpic := func(ctx context.Context, principal internalAuth.Principal, input epicInput) (*mcp.CallToolResult, any, error) {
+		if input.Color == "" {
+			input.Color = "#00d1b2"
+		}
+		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, RestoreMode: input.RestoreMode})
+		return domainResult(item, err)
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Requires cards:write.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+		principal, result := principalWithScope(ctx, "cards:write")
+		if result != nil {
+			return result, nil, nil
+		}
+		input.EpicID = ""
+		return saveEpic(ctx, principal, input)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update a project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -138,18 +153,7 @@ func (s *services) addTools(server *mcp.Server) {
 		if principal.User.Role != "admin" {
 			return errorResult("forbidden", nil), nil, nil
 		}
-		if input.Color == "" {
-			input.Color = "#00d1b2"
-		}
-		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, RestoreMode: input.RestoreMode})
-		return domainResult(item, err)
-	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
-		input.EpicID = ""
-		return saveEpic(ctx, input)
-	})
-	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update a project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
-		return saveEpic(ctx, input)
+		return saveEpic(ctx, principal, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
