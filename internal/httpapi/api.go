@@ -99,7 +99,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 	mux.Handle("DELETE /api/v1/columns/{id}", server.admin(http.HandlerFunc(server.deleteColumn)))
 
 	mux.Handle("GET /api/v1/epics", server.member(http.HandlerFunc(server.listEpics)))
-	mux.Handle("POST /api/v1/epics", server.admin(http.HandlerFunc(server.createEpic)))
+	mux.Handle("POST /api/v1/epics", server.member(http.HandlerFunc(server.createEpic)))
 	mux.Handle("GET /api/v1/epics/{id}", server.member(http.HandlerFunc(server.getEpic)))
 	mux.Handle("PATCH /api/v1/epics/{id}", server.admin(http.HandlerFunc(server.updateEpic)))
 	mux.Handle("POST /api/v1/epics/{id}/attachments", server.member(http.HandlerFunc(server.uploadEpicAttachment)))
