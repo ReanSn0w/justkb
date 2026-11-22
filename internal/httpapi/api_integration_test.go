@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ReanSn0w/justkb/internal/auth"
+	"github.com/ReanSn0w/justkb/internal/board"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 )
 
@@ -162,6 +163,62 @@ func TestRESTContractIntegration(t *testing.T) {
 	comments := request(handler, http.MethodGet, "/api/v1/cards/"+card.ID+"/comments", "", cookies[0], "")
 	if comments.Code != http.StatusOK || !strings.Contains(comments.Body.String(), "Card note") {
 		t.Fatalf("comments status=%d body=%s", comments.Code, comments.Body.String())
+	}
+}
+
+func TestMemberProjectCreation(t *testing.T) {
+	testDatabase := testdb.Open(t)
+	db := testDatabase.DB
+	if _, err := board.NewService(db).CreateUser(context.Background(), "member", "Member", "", "member", "correct horse battery staple"); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Dependencies{
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), StoragePath: t.TempDir(), Database: db, DB: db,
+		DatabasePath: testDatabase.Path, AttachmentMaxSize: 1024,
+	})
+
+	const path = "/api/v1/epics"
+	const payload = `{"name":"Member project","color":"#00d1b2"}`
+	unauthorized := request(handler, http.MethodPost, path, payload, nil, "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("create without session: status = %d, body = %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	login := request(handler, http.MethodPost, "/api/v1/auth/login", `{"username":"member","password":"correct horse battery staple"}`, nil, "")
+	if login.Code != http.StatusOK {
+		t.Fatalf("login: status = %d, body = %s", login.Code, login.Body.String())
+	}
+	var session struct {
+		CSRF string `json:"csrf_token"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	cookies := login.Result().Cookies()
+	if len(cookies) != 1 || session.CSRF == "" {
+		t.Fatal("login did not return session and CSRF")
+	}
+
+	noCSRF := request(handler, http.MethodPost, path, payload, cookies[0], "")
+	if noCSRF.Code != http.StatusForbidden || !strings.Contains(noCSRF.Body.String(), `"invalid_csrf"`) {
+		t.Fatalf("create without CSRF: status = %d, body = %s", noCSRF.Code, noCSRF.Body.String())
+	}
+
+	created := request(handler, http.MethodPost, path, payload, cookies[0], session.CSRF)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create: status = %d, body = %s", created.Code, created.Body.String())
+	}
+	var project board.Epic
+	if err := json.Unmarshal(created.Body.Bytes(), &project); err != nil {
+		t.Fatal(err)
+	}
+	if project.ID == "" || project.Name != "Member project" || project.IsArchived {
+		t.Fatalf("unexpected project: %+v", project)
+	}
+
+	updated := request(handler, http.MethodPatch, path+"/"+project.ID, `{"name":"Renamed","color":"#00d1b2","expected_version":1}`, cookies[0], session.CSRF)
+	if updated.Code != http.StatusForbidden || !strings.Contains(updated.Body.String(), `"forbidden"`) {
+		t.Fatalf("update as member: status = %d, body = %s", updated.Code, updated.Body.String())
 	}
 }
 

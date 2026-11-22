@@ -193,6 +193,96 @@ func TestMCPIntegration(t *testing.T) {
 	}
 }
 
+func TestMemberProjectCreation(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.Open(t).DB
+	boardService := board.NewService(db)
+	user, err := boardService.CreateUser(ctx, "member", "Member", "", "member", "correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := boardService.SaveEpic(ctx, "", "Existing project", "#112233", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(NewHandler(db))
+	t.Cleanup(server.Close)
+
+	connect := func(t *testing.T, scope string) *mcp.ClientSession {
+		t.Helper()
+		token, err := tokens.NewService(db).Create(ctx, user.ID, scope, []string{scope}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client := mcp.NewClient(&mcp.Implementation{Name: "project-test", Version: "1"}, nil)
+		session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+			Endpoint: server.URL, DisableStandaloneSSE: true,
+			HTTPClient: &http.Client{Transport: bearerTransport{secret: token.Secret, base: http.DefaultTransport}},
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = session.Close() })
+		return session
+	}
+	checkError := func(t *testing.T, session *mcp.ClientSession, params *mcp.CallToolParams, code string) {
+		t.Helper()
+		result, err := session.CallTool(ctx, params)
+		if err != nil || result == nil || !result.IsError || len(result.Content) != 1 {
+			t.Fatalf("%s: result = %+v, err = %v", params.Name, result, err)
+		}
+		message, ok := result.Content[0].(*mcp.TextContent)
+		if !ok {
+			t.Fatalf("%s: unexpected content: %#v", params.Name, result.Content[0])
+		}
+		var payload struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal([]byte(message.Text), &payload); err != nil || payload.Code != code {
+			t.Fatalf("%s: expected %q, got %s", params.Name, code, message.Text)
+		}
+	}
+
+	t.Run("write scope", func(t *testing.T) {
+		session := connect(t, "cards:write")
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "create_epic",
+			Arguments: map[string]any{"name": "Member project", "epic_id": original.ID, "restore_mode": "", "expected_version": 0},
+		})
+		if err != nil || result == nil || result.IsError {
+			t.Fatalf("create project: result = %+v, err = %v", result, err)
+		}
+		data, err := json.Marshal(result.StructuredContent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var project board.Epic
+		if err := json.Unmarshal(data, &project); err != nil {
+			t.Fatal(err)
+		}
+		if project.ID == "" || project.ID == original.ID || project.Name != "Member project" || project.IsArchived {
+			t.Fatalf("unexpected project: %+v", project)
+		}
+		saved, err := boardService.GetEpic(ctx, original.ID)
+		if err != nil || saved.Name != original.Name || saved.Version != original.Version {
+			t.Fatalf("original project changed: project = %+v, err = %v", saved, err)
+		}
+
+		for _, id := range []string{project.ID, ""} {
+			checkError(t, session, &mcp.CallToolParams{
+				Name:      "update_epic",
+				Arguments: map[string]any{"epic_id": id, "name": "Renamed", "expected_version": project.Version, "restore_mode": ""},
+			}, "forbidden")
+		}
+	})
+
+	t.Run("read scope", func(t *testing.T) {
+		checkError(t, connect(t, "cards:read"), &mcp.CallToolParams{
+			Name: "create_epic", Arguments: map[string]any{"name": "Read-only project", "restore_mode": "", "expected_version": 0},
+		}, "insufficient_scope")
+	})
+}
+
 func TestArchiveToolsEnforceRoleAndScope(t *testing.T) {
 	for _, tc := range []struct {
 		name, role        string

@@ -90,7 +90,7 @@ onMounted(load)
   <section class="section">
     <div class="container">
       <div v-if="error" class="notification is-danger" role="alert">{{ error }}</div>
-      <div v-if="session.user?.role === 'admin'" class="is-flex is-justify-content-flex-end mb-5">
+      <div v-if="session.user" class="is-flex is-justify-content-flex-end mb-5">
         <BaseButton @click="openCreateDialog">Создать проект</BaseButton>
       </div>
 
