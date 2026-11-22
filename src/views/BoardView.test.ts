@@ -60,7 +60,7 @@ const card = (id: string, column_id: string, position: string): Card => ({
 const initialCards = [card('1', 'a', '1000'), card('2', 'a', '2000'), card('3', 'b', '1000')]
 const empty = { items: [], next_cursor: null }
 
-describe('board sorting', () => {
+describe('board', () => {
   beforeEach(() => {
     sortableState.options.length = 0
     vi.clearAllMocks()
@@ -100,6 +100,42 @@ describe('board sorting', () => {
     await flushPromises()
     return wrapper
   }
+
+  it('enables and highlights the create button only when its column has a title', async () => {
+    vi.mocked(cardsApi.create).mockResolvedValueOnce({ ...card('4', 'a', '0'), title: 'New card' })
+    const wrapper = await mountedBoard()
+    const forms = wrapper.findAll('[data-board-scroll] form')
+    const input = forms[0]!.get<HTMLInputElement>('[aria-label="Новая карточка в Todo"]')
+    const button = forms[0]!.get<HTMLButtonElement>('[aria-label="Создать карточку"]')
+    const otherButton = forms[1]!.get<HTMLButtonElement>('[aria-label="Создать карточку"]')
+
+    expect(button.element.disabled).toBe(true)
+    expect(button.classes()).not.toContain('is-primary')
+
+    await input.setValue('   ')
+    expect(button.element.disabled).toBe(true)
+    expect(button.classes()).not.toContain('is-primary')
+
+    await input.setValue('  New card  ')
+    expect(button.element.disabled).toBe(false)
+    expect(button.classes()).toContain('is-primary')
+    expect(button.element.type).toBe('submit')
+    expect(otherButton.element.disabled).toBe(true)
+
+    await input.setValue('')
+    expect(button.element.disabled).toBe(true)
+    expect(button.classes()).not.toContain('is-primary')
+
+    await input.setValue('  New card  ')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(cardsApi.create).toHaveBeenCalledWith({ title: 'New card', column_id: 'a' })
+    expect(input.element.value).toBe('')
+    expect(button.element.disabled).toBe(true)
+    expect(button.classes()).not.toContain('is-primary')
+    wrapper.unmount()
+  })
 
   it('moves a card before its next sibling in the same column', async () => {
     const wrapper = await mountedBoard()

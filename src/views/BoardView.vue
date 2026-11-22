@@ -162,7 +162,13 @@ async function keyboard(card: Card, direction: -1 | 1) {
                 />
               </div>
               <div class="control">
-                <button class="button is-primary" aria-label="Создать карточку">+</button>
+                <BaseButton
+                  type="submit"
+                  :disabled="!draft[column.id]?.trim()"
+                  :tone="draft[column.id]?.trim() ? 'primary' : 'quiet'"
+                  aria-label="Создать карточку"
+                  >+</BaseButton
+                >
               </div>
             </form>
             <div data-card-list :data-column-id="column.id">
