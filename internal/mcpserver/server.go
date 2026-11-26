@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"net/http"
 	"sort"
 	"time"
@@ -426,6 +427,10 @@ func requireScope(ctx context.Context, scope string) *mcp.CallToolResult {
 func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	if err == nil {
 		return nil, value, nil
+	}
+	var limitErr *pagination.LimitError
+	if errors.As(err, &limitErr) {
+		return errorResult("validation_failed", limitErr.Details()), nil, nil
 	}
 	code := "internal_error"
 	details := map[string]any{}

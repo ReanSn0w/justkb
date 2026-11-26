@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"strconv"
 	"strings"
 	"time"
@@ -283,7 +284,7 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 		filters.Limit = 50
 	}
 	if filters.Limit > 100 {
-		return Page{}, ErrValidation
+		return Page{}, &pagination.LimitError{Maximum: 100, Default: 50, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	query := cardSelect + ` JOIN board_columns ordering_column ON ordering_column.id=c.column_id WHERE c.is_archived=$1`
 	args := []any{filters.Archived}
@@ -532,7 +533,7 @@ func (s *Service) Activity(ctx context.Context, cardID string, limit int) ([]Act
 		limit = 50
 	}
 	if limit > 100 {
-		return nil, ErrValidation
+		return nil, &pagination.LimitError{Maximum: 100, Default: 50, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id,card_id,actor_user_id,actor_token_id,action,changes,created_at FROM card_activity WHERE card_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2`, cardID, limit)
 	if err != nil {
@@ -562,7 +563,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		filters.Limit = 100
 	}
 	if filters.Limit > 500 {
-		return MovementPage{}, ErrValidation
+		return MovementPage{}, &pagination.LimitError{Maximum: 500, Default: 100, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	query := `
 		SELECT activity.id,activity.card_id,card.number,card.title,

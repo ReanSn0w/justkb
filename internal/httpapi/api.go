@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"io"
 	"mime"
 	"net"
@@ -820,6 +821,11 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
+	var limitErr *pagination.LimitError
+	if errors.As(err, &limitErr) {
+		writeAPIError(w, r, http.StatusUnprocessableEntity, "validation_failed", limitErr.Error(), limitErr.Details())
+		return
+	}
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
 	case errors.Is(err, archive.ErrVersionConflict):
