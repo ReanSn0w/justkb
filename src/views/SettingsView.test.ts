@@ -1,3 +1,5 @@
+import { useBoardStore } from '../stores/board'
+import axe from 'axe-core'
 import { createPinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +10,7 @@ const column: BoardColumn = {
   id: 'backlog',
   name: 'Backlog',
   position: 100,
+  allow_card_creation: true,
   created_at: '',
   updated_at: '',
 }
@@ -64,8 +67,45 @@ describe('settings directories', () => {
     expect(directoryApi.updateColumn).toHaveBeenCalledWith('backlog', {
       name: 'Очередь',
       wip_limit: undefined,
+      allow_card_creation: true,
     })
     expect(wrapper.find('.modal').exists()).toBe(false)
+  })
+
+  it('saves disabled creation and refreshes the shared board', async () => {
+    const pinia = createPinia()
+    vi.mocked(directoryApi.columns)
+      .mockResolvedValueOnce({ items: [column], next_cursor: null })
+      .mockResolvedValueOnce({
+        items: [{ ...column, allow_card_creation: false }],
+        next_cursor: null,
+      })
+    const wrapper = mount(SettingsView, { attachTo: document.body, global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper
+      .findAll('.tabs a')
+      .find((x) => x.text() === 'Колонки')!
+      .trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((x) => x.text() === 'Редактировать')!
+      .trigger('click')
+    await wrapper.get('.modal input[role="switch"]').setValue(false)
+    expect(
+      (
+        await axe.run(wrapper.get('.modal').element, {
+          rules: { 'color-contrast': { enabled: false } },
+        })
+      ).violations,
+    ).toEqual([])
+    await wrapper.get('.modal form').trigger('submit')
+    await flushPromises()
+    expect(directoryApi.updateColumn).toHaveBeenCalledWith(
+      'backlog',
+      expect.objectContaining({ allow_card_creation: false }),
+    )
+    expect(useBoardStore(pinia).columns[0]!.allow_card_creation).toBe(false)
+    wrapper.unmount()
   })
 
   it.each([

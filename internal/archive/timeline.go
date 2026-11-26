@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"strings"
 	"time"
 
@@ -68,7 +69,10 @@ func (s *Service) List(ctx context.Context, f Filters) (Page, error) {
 	if f.Limit == 0 {
 		f.Limit = 30
 	}
-	if f.Limit < 1 || f.Limit > 100 || (f.Type != "" && f.Type != "card" && f.Type != "project") || (f.State != "" && f.State != "archived" && f.State != "restored" && f.State != "all") {
+	if f.Limit < 1 || f.Limit > 100 {
+		return result, &pagination.LimitError{Maximum: 100, Default: 30, Cause: ErrValidation}
+	}
+	if (f.Type != "" && f.Type != "card" && f.Type != "project") || (f.State != "" && f.State != "archived" && f.State != "restored" && f.State != "all") {
 		return result, ErrValidation
 	}
 	for _, date := range []string{f.From, f.To} {

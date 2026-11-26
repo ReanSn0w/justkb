@@ -18,7 +18,16 @@ beforeEach(() => {
     projects_days: 3,
   })
   vi.mocked(directoryApi.columns).mockResolvedValue({
-    items: [{ id: 'done', name: 'Готово', position: 100, created_at: '', updated_at: '' }],
+    items: [
+      {
+        id: 'done',
+        name: 'Готово',
+        position: 100,
+        allow_card_creation: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ],
     next_cursor: null,
   })
   vi.mocked(archiveApi.preview).mockResolvedValue({ cards: 4, projects: 1 })

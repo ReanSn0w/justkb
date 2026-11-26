@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"net/http"
 	"sort"
 	"time"
@@ -65,7 +66,7 @@ func (s *services) addTools(server *mcp.Server) {
 		TokenID     string            `json:"token_id"`
 		TokenScopes []string          `json:"token_scopes"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "get_current_user", Description: "Get the owner of the current API token, their groups, role, and token scopes. Use the user ID with assignee filters; list_cards also accepts assignee_id='me'.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "get_current_user", Description: "Get the owner of the current API token, their groups, role, and token scopes. Use the user ID with assignee filters; list_cards also accepts assignee_id='me'.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		principal, result := principalFromContext(ctx)
 		if result != nil {
 			return result, nil, nil
@@ -96,14 +97,14 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(currentUserInfo{User: user, Groups: groups, TokenID: principal.TokenID, TokenScopes: scopes}, nil)
 	})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_columns", Description: "List kanban columns in board order.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_columns", Description: "List kanban columns in board order.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
 		items, err := s.board.ListColumns(ctx)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_epics", Description: "List projects.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "list_epics", Description: "List projects.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		IncludeArchived bool `json:"include_archived,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
@@ -112,7 +113,7 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.board.ListEpics(ctx, input.IncludeArchived)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "get_epic", Description: "Get a project with its description and task count.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "get_epic", Description: "Get a project with its description and task count.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		EpicID string `json:"epic_id"`
 	}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
@@ -122,9 +123,9 @@ func (s *services) addTools(server *mcp.Server) {
 		return domainResult(item, err)
 	})
 	type epicInput struct {
-		RestoreMode     string  `json:"restore_mode"`
+		RestoreMode     string  `json:"restore_mode,omitempty"`
 		ExpectedVersion int64   `json:"expected_version"`
-		EpicID          string  `json:"epic_id,omitempty"`
+		EpicID          string  `json:"epic_id"`
 		Name            string  `json:"name"`
 		Description     *string `json:"description,omitempty"`
 		Color           string  `json:"color,omitempty"`
@@ -137,15 +138,22 @@ func (s *services) addTools(server *mcp.Server) {
 		item, err := s.board.SaveEpic(ctx, input.EpicID, input.Name, input.Color, input.Description, input.IsArchived, board.EpicSaveOptions{ExpectedVersion: input.ExpectedVersion, Actor: archive.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, RestoreMode: input.RestoreMode})
 		return domainResult(item, err)
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Requires cards:write.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "create_epic", Description: "Create a project. Requires cards:write.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		ExpectedVersion int64   `json:"expected_version,omitempty"`
+		RestoreMode     string  `json:"restore_mode,omitempty"`
+		EpicID          string  `json:"epic_id,omitempty"`
+		IsArchived      bool    `json:"is_archived,omitempty"`
+		Name            string  `json:"name"`
+		Description     *string `json:"description,omitempty"`
+		Color           string  `json:"color,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
 		}
-		input.EpicID = ""
-		return saveEpic(ctx, principal, input)
+		return saveEpic(ctx, principal, epicInput{Name: input.Name, Description: input.Description, Color: input.Color, IsArchived: input.IsArchived})
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "update_epic", Description: "Update a project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "update_epic", Description: "Update a project. Read it first and provide the complete state. Admin only.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input epicInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -155,14 +163,14 @@ func (s *services) addTools(server *mcp.Server) {
 		}
 		return saveEpic(ctx, principal, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_groups", Description: "List task groups.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
 		items, err := s.board.ListGroups(ctx)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_users", Description: "List assignable users without sensitive fields.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "list_users", Description: "List assignable users without sensitive fields.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		GroupID         string `json:"group_id,omitempty"`
 		IncludeInactive bool   `json:"include_inactive,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
@@ -172,7 +180,7 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.board.ListUsers(ctx, input.IncludeInactive, input.GroupID)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_tags", Description: "List card tags.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_tags", Description: "List card tags.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
@@ -190,7 +198,7 @@ func (s *services) addTools(server *mcp.Server) {
 		Limit      int      `json:"limit,omitempty"`
 		Cursor     string   `json:"cursor,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "list_cards", Description: "List cards using combinable board filters.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input listCardsInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_cards", Description: "List cards using combinable board filters.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input listCardsInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:read")
 		if result != nil {
 			return result, nil, nil
@@ -198,7 +206,7 @@ func (s *services) addTools(server *mcp.Server) {
 		page, err := s.cards.List(ctx, cards.Filters{EpicID: input.EpicID, GroupID: input.GroupID, AssigneeID: input.AssigneeID, CurrentUserID: principal.User.ID, TagIDs: input.TagIDs, ColumnID: input.ColumnID, Query: input.Query, Archived: input.Archived, Limit: input.Limit, Cursor: input.Cursor})
 		return domainResult(page, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "get_card", Description: "Get a card by UUID or JKB number.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "get_card", Description: "Get a card by UUID or JKB number.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		CardID     string `json:"card_id,omitempty"`
 		CardNumber string `json:"card_number,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
@@ -215,7 +223,7 @@ func (s *services) addTools(server *mcp.Server) {
 		item, err := s.cards.Get(ctx, identifier)
 		return domainResult(item, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "get_card_activity", Description: "Get recent card activity.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "get_card_activity", Description: "Get recent card activity.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		CardID string `json:"card_id"`
 		Limit  int    `json:"limit,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
@@ -236,7 +244,7 @@ func (s *services) addTools(server *mcp.Server) {
 		Limit       int    `json:"limit,omitempty"`
 		Cursor      string `json:"cursor,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "list_card_movements", Description: "List card movements across the whole board for a time period. from/to use RFC3339; when omitted the period is the previous 24 hours. Omit user filters for an all-user report. actor_user_id filters who performed the move; assignee_id filters the card's current assignee. Both accept 'me'. Results include card titles, column names, actor, current assignee, project, and group.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input listMovementsInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_card_movements", Description: "List card movements across the whole board for a time period. from/to use RFC3339; when omitted the period is the previous 24 hours. Omit user filters for an all-user report. actor_user_id filters who performed the move; assignee_id filters the card's current assignee. Both accept 'me'. Results include card titles, column names, actor, current assignee, project, and group.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input listMovementsInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:read")
 		if result != nil {
 			return result, nil, nil
@@ -262,7 +270,7 @@ func (s *services) addTools(server *mcp.Server) {
 		CardID    string `json:"card_id,omitempty"`
 		ProjectID string `json:"project_id,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "list_comments", Description: "List the discussion for one card or project. Read it before starting work because comments may contain current requirements and decisions.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input commentTarget) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_comments", Description: "List the discussion for one card or project. Read it before starting work because comments may contain current requirements and decisions.", Annotations: readOnly}, func(ctx context.Context, _ *mcp.CallToolRequest, input commentTarget) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
@@ -276,7 +284,7 @@ func (s *services) addTools(server *mcp.Server) {
 		items, err := s.comments.ListCard(ctx, input.CardID)
 		return domainResult(items, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "add_comment", Description: "Add a Markdown comment to one card or project.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "add_comment", Description: "Add a Markdown comment to one card or project.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		CardID    string `json:"card_id,omitempty"`
 		ProjectID string `json:"project_id,omitempty"`
 		Body      string `json:"body"`
@@ -308,7 +316,7 @@ func (s *services) addTools(server *mcp.Server) {
 		TagIDs      []string   `json:"tag_ids,omitempty"`
 		DueAt       *time.Time `json:"due_at,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_card", Description: "Create a card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input createInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "create_card", Description: "Create a card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input createInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -327,7 +335,7 @@ func (s *services) addTools(server *mcp.Server) {
 		AssigneeIDs     []string  `json:"assignee_ids,omitempty"`
 		TagIDs          *[]string `json:"tag_ids,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "update_card", Description: "Update card fields using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input updateInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "update_card", Description: "Update card fields using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input updateInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -342,7 +350,7 @@ func (s *services) addTools(server *mcp.Server) {
 		BeforeCardID    string `json:"before_card_id,omitempty"`
 		AfterCardID     string `json:"after_card_id,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "move_card", Description: "Move a card using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input moveInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "move_card", Description: "Move a card using optimistic locking.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input moveInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -357,7 +365,7 @@ func (s *services) addTools(server *mcp.Server) {
 		AssigneeID      *string  `json:"assignee_id,omitempty"`
 		AssigneeIDs     []string `json:"assignee_ids,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "assign_card", Description: "Assign a group or replace the assignees of a card. An empty assignee_ids array clears the list.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input assignInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "assign_card", Description: "Assign a group or replace the assignees of a card. An empty assignee_ids array clears the list.", Annotations: closedWorld}, func(ctx context.Context, req *mcp.CallToolRequest, input assignInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -370,7 +378,7 @@ func (s *services) addTools(server *mcp.Server) {
 		CardID          string `json:"card_id"`
 		ExpectedVersion int64  `json:"expected_version"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "archive_card", Description: "Archive a card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input archiveInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "archive_card", Description: "Archive a card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input archiveInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -378,7 +386,7 @@ func (s *services) addTools(server *mcp.Server) {
 		item, err := s.cards.SetArchived(ctx, cards.Actor{UserID: principal.User.ID, TokenID: principal.TokenID}, input.CardID, input.ExpectedVersion, true)
 		return domainResult(item, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "restore_card", Description: "Restore an archived card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input archiveInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "restore_card", Description: "Restore an archived card.", Annotations: closedWorld}, func(ctx context.Context, _ *mcp.CallToolRequest, input archiveInput) (*mcp.CallToolResult, any, error) {
 		principal, result := principalWithScope(ctx, "cards:write")
 		if result != nil {
 			return result, nil, nil
@@ -419,6 +427,14 @@ func requireScope(ctx context.Context, scope string) *mcp.CallToolResult {
 func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	if err == nil {
 		return nil, value, nil
+	}
+	var creationErr *cards.CreationNotAllowedError
+	if errors.As(err, &creationErr) {
+		return errorResult("card_creation_not_allowed", map[string]any{"column_id": creationErr.ColumnID}), nil, nil
+	}
+	var limitErr *pagination.LimitError
+	if errors.As(err, &limitErr) {
+		return errorResult("validation_failed", limitErr.Details()), nil, nil
 	}
 	code := "internal_error"
 	details := map[string]any{}

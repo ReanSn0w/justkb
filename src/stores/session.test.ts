@@ -10,6 +10,7 @@ const user = {
   id: 'u',
   username: 'ada',
   display_name: 'Ada',
+  account_type: 'human' as const,
   role: 'admin' as const,
   is_active: true,
   created_at: '',

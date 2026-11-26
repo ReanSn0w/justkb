@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { ApiError, directoryApi, type BoardColumn, type Group, type Tag, type User } from '../api'
+import BaseDialog from '../components/ui/BaseDialog.vue'
+import { useBoardStore } from '../stores/board'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
+import BotSettings from '../components/admin/BotSettings.vue'
 import ArchiveSettings from '../components/admin/ArchiveSettings.vue'
 import BackupSettings from '../components/admin/BackupSettings.vue'
 import ColorTag from '../components/ui/ColorTag.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
-type Tab = DirectoryTab | 'backup' | 'archive'
+type Tab = DirectoryTab | 'backup' | 'archive' | 'bots'
 type RenameKind = Exclude<DirectoryTab, 'users'>
 type RenameItem = Group | BoardColumn | Tag
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
+  bots: 'Боты',
   groups: 'Команды',
   columns: 'Колонки',
   tags: 'Теги',
   backup: 'Резервные копии',
   archive: 'Архивация',
 }
+const board = useBoardStore()
+const allowCreation = ref(false),
+  renameAllowCreation = ref(false)
 const users = ref<User[]>([]),
   groups = ref<Group[]>([]),
   columns = ref<BoardColumn[]>([]),
@@ -38,7 +45,7 @@ const users = ref<User[]>([]),
 async function load() {
   try {
     const [u, g, c, t] = await Promise.all([
-      directoryApi.users(),
+      directoryApi.users(true),
       directoryApi.groups(),
       directoryApi.columns(),
       directoryApi.tags(),
@@ -46,6 +53,7 @@ async function load() {
     users.value = u.items
     groups.value = g.items
     columns.value = c.items.sort((a, b) => a.position - b.position)
+    board.columns = columns.value
     tags.value = t.items
   } catch (cause) {
     error.value =
@@ -67,9 +75,11 @@ async function create() {
         password: crypto.randomUUID(),
       })
     else if (tab.value === 'groups') await directoryApi.createGroup(data)
-    else if (tab.value === 'columns') await directoryApi.createColumn({ name: data.name })
+    else if (tab.value === 'columns')
+      await directoryApi.createColumn({ name: data.name, allow_card_creation: allowCreation.value })
     else await directoryApi.createTag(data)
     name.value = ''
+    allowCreation.value = false
     await load()
     toasts.show('Справочник обновлён')
   } catch {
@@ -112,6 +122,7 @@ async function moveColumn(index: number, delta: number) {
 function startRename(kind: RenameKind, item: RenameItem) {
   renaming.value = { kind, item }
   renameName.value = item.name
+  if (kind === 'columns') renameAllowCreation.value = (item as BoardColumn).allow_card_creation
   if ('color' in item) renameColor.value = item.color
   renameError.value = ''
   void nextTick(() => renameInput.value?.focus())
@@ -136,7 +147,11 @@ async function saveRename() {
       })
     } else if (current.kind === 'columns') {
       const column = current.item as BoardColumn
-      await directoryApi.updateColumn(column.id, { name: value, wip_limit: column.wip_limit })
+      await directoryApi.updateColumn(column.id, {
+        name: value,
+        wip_limit: column.wip_limit,
+        allow_card_creation: renameAllowCreation.value,
+      })
     } else {
       const tag = current.item as Tag
       await directoryApi.updateTag(tag.id, { name: value, color: renameColor.value })
@@ -158,11 +173,15 @@ async function saveRename() {
       <nav class="tabs is-boxed" aria-label="Разделы настроек">
         <ul>
           <li v-for="(_, key) in labels" :key="key" :class="{ 'is-active': tab === key }">
-            <a @click="tab = key">{{ labels[key] }}</a>
+            <a href="#" @click.prevent="tab = key">{{ labels[key] }}</a>
           </li>
         </ul>
       </nav>
-      <form v-if="tab !== 'backup' && tab !== 'archive'" class="box" @submit.prevent="create">
+      <form
+        v-if="tab !== 'backup' && tab !== 'archive' && tab !== 'bots'"
+        class="box"
+        @submit.prevent="create"
+      >
         <div class="columns is-align-items-flex-end">
           <div class="column">
             <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'">
@@ -174,6 +193,18 @@ async function saveRename() {
               <input v-model="color" class="input" type="color" />
             </BaseField>
           </div>
+          <div v-if="tab === 'columns'" class="column">
+            <label class="checkbox"
+              ><input
+                v-model="allowCreation"
+                type="checkbox"
+                role="switch"
+                :aria-checked="allowCreation"
+              />
+              Разрешать создание карточек</label
+            >
+            <p class="help">Перемещение существующих карточек остаётся доступным.</p>
+          </div>
           <div class="column is-narrow">
             <div class="field">
               <div class="control"><BaseButton type="submit">Добавить</BaseButton></div>
@@ -181,7 +212,7 @@ async function saveRename() {
           </div>
         </div>
       </form>
-      <div v-if="tab !== 'backup' && tab !== 'archive'" class="box">
+      <div v-if="tab !== 'backup' && tab !== 'archive' && tab !== 'bots'" class="box">
         <template v-if="tab === 'users'">
           <article v-for="user in users" :key="user.id" class="media">
             <div class="media-left"><UserAvatar :user="user" :size="48" /></div>
@@ -189,6 +220,7 @@ async function saveRename() {
               <div class="content">
                 <p>
                   <strong>{{ user.display_name }}</strong>
+                  <span v-if="user.account_type === 'bot'" class="tag">Бот</span>
                   <br />
                   <small>
                     @{{ user.username }} · {{ user.role }} ·
@@ -200,6 +232,7 @@ async function saveRename() {
             <div class="media-right">
               <div class="buttons are-small">
                 <button
+                  v-if="user.account_type !== 'bot'"
                   class="button"
                   @click="patchUser(user, { role: user.role === 'admin' ? 'member' : 'admin' })"
                 >
@@ -209,7 +242,9 @@ async function saveRename() {
                   {{ user.is_active ? 'Отключить' : 'Включить' }}
                 </button>
                 <button class="button" @click="membership(user)">Команды</button>
-                <button class="button" @click="password(user)">Пароль</button>
+                <button v-if="user.account_type !== 'bot'" class="button" @click="password(user)">
+                  Пароль
+                </button>
               </div>
             </div>
           </article>
@@ -230,6 +265,9 @@ async function saveRename() {
           <article v-for="(item, index) in columns" :key="item.id" class="media">
             <div class="media-content">
               <strong>{{ item.name }}</strong>
+              <p class="help">
+                Создание карточек: {{ item.allow_card_creation ? 'разрешено' : 'запрещено' }}
+              </p>
             </div>
             <div class="media-right">
               <div class="buttons are-small">
@@ -272,50 +310,65 @@ async function saveRename() {
           Записей пока нет.
         </p>
       </div>
+      <BotSettings v-else-if="tab === 'bots'" />
       <ArchiveSettings v-else-if="tab === 'archive'" />
       <BackupSettings v-else />
-      <div v-if="renaming" class="modal is-active" role="dialog" aria-modal="true">
-        <div class="modal-background" @click="cancelRename" />
-        <div class="modal-card">
-          <header class="modal-card-head">
-            <h2 class="modal-card-title">Редактировать</h2>
-            <button class="delete" type="button" aria-label="Закрыть" @click="cancelRename" />
-          </header>
-          <form @submit.prevent="saveRename">
-            <section class="modal-card-body">
-              <div v-if="renameError" class="notification is-danger" role="alert">
-                {{ renameError }}
-              </div>
-              <BaseField label="Новое название">
-                <input
-                  ref="renameInput"
-                  v-model="renameName"
-                  class="input"
-                  required
-                  :disabled="renameBusy"
-                />
-              </BaseField>
-              <BaseField v-if="renaming.kind !== 'columns'" label="Цвет">
-                <input v-model="renameColor" class="input" type="color" :disabled="renameBusy" />
-              </BaseField>
-            </section>
-            <footer class="modal-card-foot">
-              <div class="buttons mb-0">
-                <button
-                  class="button is-primary"
-                  type="submit"
-                  :class="{ 'is-loading': renameBusy }"
-                >
-                  Сохранить
-                </button>
-                <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
-                  Отмена
-                </button>
-              </div>
-            </footer>
-          </form>
-        </div>
-      </div>
+      <BaseDialog :open="!!renaming" title="Редактировать" @close="cancelRename">
+        <form v-if="renaming" id="directory-edit" @submit.prevent="saveRename">
+          <div v-if="renameError" class="notification is-danger" role="alert">
+            {{ renameError }}
+          </div>
+          <BaseField label="Новое название">
+            <input
+              ref="renameInput"
+              v-model="renameName"
+              aria-label="Новое название"
+              class="input"
+              required
+              :disabled="renameBusy"
+            />
+          </BaseField>
+          <BaseField v-if="renaming.kind !== 'columns'" label="Цвет">
+            <input
+              v-model="renameColor"
+              aria-label="Цвет"
+              class="input"
+              type="color"
+              :disabled="renameBusy"
+            />
+          </BaseField>
+          <template v-else>
+            <label class="checkbox"
+              ><input
+                v-model="renameAllowCreation"
+                type="checkbox"
+                role="switch"
+                :aria-checked="renameAllowCreation"
+                :disabled="renameBusy"
+              />
+              Разрешать создание карточек</label
+            >
+            <p class="help">
+              Действует для людей и MCP-агентов. Перемещение и восстановление существующих карточек
+              разрешены.
+            </p>
+          </template>
+        </form>
+        <template #actions>
+          <button
+            class="button is-primary"
+            type="submit"
+            form="directory-edit"
+            :disabled="renameBusy"
+            :class="{ 'is-loading': renameBusy }"
+          >
+            Сохранить
+          </button>
+          <button class="button" type="button" :disabled="renameBusy" @click="cancelRename">
+            Отмена
+          </button>
+        </template>
+      </BaseDialog>
     </div>
   </section>
 </template>

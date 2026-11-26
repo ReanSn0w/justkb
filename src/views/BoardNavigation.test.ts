@@ -31,7 +31,16 @@ it('restores query-only history, preserves unrelated query and cancels delayed w
   ])
     vi.mocked(method).mockResolvedValue(empty)
   vi.mocked(directoryApi.columns).mockResolvedValue({
-    items: [{ id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' }],
+    items: [
+      {
+        id: 'a',
+        name: 'Todo',
+        position: 1,
+        allow_card_creation: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ],
     next_cursor: null,
   })
   const router = createRouter({

@@ -5,6 +5,7 @@ export interface Timestamps {
   updated_at: string
 }
 export interface User extends Timestamps {
+  account_type: 'human' | 'bot'
   id: UUID
   username: string
   display_name: string
@@ -21,6 +22,7 @@ export interface Group extends Timestamps {
   description?: string | null
 }
 export interface BoardColumn extends Timestamps {
+  allow_card_creation: boolean
   id: UUID
   name: string
   position: number

@@ -36,6 +36,7 @@ describe('application navigation', () => {
       id: 'u1',
       username: 'admin',
       display_name: 'Ada Admin',
+      account_type: 'human' as const,
       role: 'admin',
       is_active: true,
       created_at: '',

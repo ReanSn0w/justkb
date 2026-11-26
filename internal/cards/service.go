@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ReanSn0w/justkb/internal/pagination"
 	"strconv"
 	"strings"
 	"time"
@@ -211,12 +212,15 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if err := validateEpic(ctx, tx, input.EpicID); err != nil {
 		return Card{}, err
 	}
-	var columnExists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&columnExists); err != nil {
+	var allowCreation bool
+	if err := tx.QueryRowContext(ctx, `SELECT allow_card_creation FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&allowCreation); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Card{}, ErrValidation
 		}
 		return Card{}, err
+	}
+	if !allowCreation {
+		return Card{}, &CreationNotAllowedError{ColumnID: input.ColumnID}
 	}
 	var position string
 	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(min(position) - 1000, 1000) AS TEXT) FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
@@ -283,7 +287,7 @@ func (s *Service) List(ctx context.Context, filters Filters) (Page, error) {
 		filters.Limit = 50
 	}
 	if filters.Limit > 100 {
-		return Page{}, ErrValidation
+		return Page{}, &pagination.LimitError{Maximum: 100, Default: 50, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	query := cardSelect + ` JOIN board_columns ordering_column ON ordering_column.id=c.column_id WHERE c.is_archived=$1`
 	args := []any{filters.Archived}
@@ -532,7 +536,7 @@ func (s *Service) Activity(ctx context.Context, cardID string, limit int) ([]Act
 		limit = 50
 	}
 	if limit > 100 {
-		return nil, ErrValidation
+		return nil, &pagination.LimitError{Maximum: 100, Default: 50, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT id,card_id,actor_user_id,actor_token_id,action,changes,created_at FROM card_activity WHERE card_id=$1 ORDER BY created_at DESC,id DESC LIMIT $2`, cardID, limit)
 	if err != nil {
@@ -562,7 +566,7 @@ func (s *Service) ListMovements(ctx context.Context, filters MovementFilters) (M
 		filters.Limit = 100
 	}
 	if filters.Limit > 500 {
-		return MovementPage{}, ErrValidation
+		return MovementPage{}, &pagination.LimitError{Maximum: 500, Default: 100, NegativeUsesDefault: true, Cause: ErrValidation}
 	}
 	query := `
 		SELECT activity.id,activity.card_id,card.number,card.title,
@@ -916,4 +920,11 @@ func decodeMovementCursor(value string) (movementCursor, error) {
 		return movementCursor{}, ErrValidation
 	}
 	return cursor, nil
+}
+
+// CreationNotAllowedError applies to all actors, including administrators.
+type CreationNotAllowedError struct{ ColumnID string }
+
+func (e *CreationNotAllowedError) Error() string {
+	return "card creation is not allowed in this column"
 }

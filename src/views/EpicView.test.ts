@@ -58,8 +58,22 @@ describe('project details', () => {
     })
     vi.mocked(directoryApi.columns).mockResolvedValue({
       items: [
-        { id: 'backlog', name: 'Backlog', position: 100, created_at: '', updated_at: '' },
-        { id: 'done', name: 'Done', position: 200, created_at: '', updated_at: '' },
+        {
+          id: 'backlog',
+          name: 'Backlog',
+          position: 100,
+          allow_card_creation: true,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: 'done',
+          name: 'Done',
+          position: 200,
+          allow_card_creation: true,
+          created_at: '',
+          updated_at: '',
+        },
       ],
       next_cursor: null,
     })
