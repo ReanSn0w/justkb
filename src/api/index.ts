@@ -54,7 +54,8 @@ export const systemApi = {
   get: () => request<{ name: string }>('/system'),
 }
 export const directoryApi = {
-  users: () => request<ListResult<User>>('/users?limit=100'),
+  users: (includeInactive = false) =>
+    request<ListResult<User>>(`/users?include_inactive=${includeInactive}`),
   createUser: (data: unknown) => request<User>('/users', json('POST', data)),
   updateUser: (id: UUID, data: unknown) => request<User>(`/users/${id}`, json('PATCH', data)),
   setUserGroups: (id: UUID, group_ids: UUID[]) =>
@@ -148,4 +149,14 @@ export const archiveApi = {
   },
   restoreProject: (id: UUID, expected_version: number, mode: 'project_only' | 'with_cards') =>
     request<Epic>(`/epics/${id}/restore`, json('POST', { expected_version, mode })),
+}
+
+export const botsApi = {
+  create: (display_name: string) =>
+    request<{ user_id: UUID; token: IssuedToken }>('/bots', json('POST', { display_name })),
+  token: (id: UUID) => request<ApiToken>(`/bots/${id}/token`),
+  rotate: (id: UUID, expected_token_id: UUID) =>
+    request<IssuedToken>(`/bots/${id}/token/rotate`, json('POST', { expected_token_id })),
+  uploadAvatar: (id: UUID, file: File) => upload<void>(`/bots/${id}/avatar`, file),
+  deleteAvatar: (id: UUID) => request<void>(`/bots/${id}/avatar`, { method: 'DELETE' }),
 }

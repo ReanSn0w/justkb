@@ -1,11 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { request, setCsrfToken } from './http'
+import { request, setCsrfToken, upload } from './http'
 import { cardsApi, epicsApi } from '.'
 
 describe('HTTP API client', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     setCsrfToken('csrf')
+  })
+  it('accepts an empty 204 response after avatar upload', async () => {
+    const send = vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(function (
+      this: XMLHttpRequest,
+    ) {
+      Object.defineProperty(this, 'status', { value: 204 })
+      this.dispatchEvent(new Event('load'))
+    })
+    await expect(
+      upload<void>('/bots/test/avatar', new File(['test'], 'test.png')),
+    ).resolves.toBeUndefined()
+    expect(send).toHaveBeenCalledOnce()
   })
   it('sends cookies and CSRF for mutations', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(

@@ -70,6 +70,10 @@ export function upload<T>(
     xhr.onerror = () => reject(new ApiError(0, 'network_error', 'Не удалось загрузить файл'))
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        if (xhr.status === 204) {
+          resolve(undefined as T)
+          return
+        }
         try {
           resolve(JSON.parse(xhr.responseText) as T)
         } catch {

@@ -5,6 +5,7 @@ export interface Timestamps {
   updated_at: string
 }
 export interface User extends Timestamps {
+  account_type: 'human' | 'bot'
   id: UUID
   username: string
   display_name: string

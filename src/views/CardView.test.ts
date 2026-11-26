@@ -110,6 +110,7 @@ describe('card details layout', () => {
       {
         ...selected,
         username: 'new',
+        account_type: 'human' as const,
         role: 'member',
         is_active: true,
         created_at: '',

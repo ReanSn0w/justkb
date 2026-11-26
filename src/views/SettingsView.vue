@@ -6,16 +6,18 @@ import { useBoardStore } from '../stores/board'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseField from '../components/ui/BaseField.vue'
 import UserAvatar from '../components/user/UserAvatar.vue'
+import BotSettings from '../components/admin/BotSettings.vue'
 import ArchiveSettings from '../components/admin/ArchiveSettings.vue'
 import BackupSettings from '../components/admin/BackupSettings.vue'
 import ColorTag from '../components/ui/ColorTag.vue'
 import { useToastStore } from '../stores/toasts'
 type DirectoryTab = 'users' | 'groups' | 'columns' | 'tags'
-type Tab = DirectoryTab | 'backup' | 'archive'
+type Tab = DirectoryTab | 'backup' | 'archive' | 'bots'
 type RenameKind = Exclude<DirectoryTab, 'users'>
 type RenameItem = Group | BoardColumn | Tag
 const labels: Record<Tab, string> = {
   users: 'Пользователи',
+  bots: 'Боты',
   groups: 'Команды',
   columns: 'Колонки',
   tags: 'Теги',
@@ -43,7 +45,7 @@ const users = ref<User[]>([]),
 async function load() {
   try {
     const [u, g, c, t] = await Promise.all([
-      directoryApi.users(),
+      directoryApi.users(true),
       directoryApi.groups(),
       directoryApi.columns(),
       directoryApi.tags(),
@@ -171,11 +173,15 @@ async function saveRename() {
       <nav class="tabs is-boxed" aria-label="Разделы настроек">
         <ul>
           <li v-for="(_, key) in labels" :key="key" :class="{ 'is-active': tab === key }">
-            <a @click="tab = key">{{ labels[key] }}</a>
+            <a href="#" @click.prevent="tab = key">{{ labels[key] }}</a>
           </li>
         </ul>
       </nav>
-      <form v-if="tab !== 'backup' && tab !== 'archive'" class="box" @submit.prevent="create">
+      <form
+        v-if="tab !== 'backup' && tab !== 'archive' && tab !== 'bots'"
+        class="box"
+        @submit.prevent="create"
+      >
         <div class="columns is-align-items-flex-end">
           <div class="column">
             <BaseField :label="tab === 'users' ? 'Имя/логин' : 'Название'">
@@ -206,7 +212,7 @@ async function saveRename() {
           </div>
         </div>
       </form>
-      <div v-if="tab !== 'backup' && tab !== 'archive'" class="box">
+      <div v-if="tab !== 'backup' && tab !== 'archive' && tab !== 'bots'" class="box">
         <template v-if="tab === 'users'">
           <article v-for="user in users" :key="user.id" class="media">
             <div class="media-left"><UserAvatar :user="user" :size="48" /></div>
@@ -214,6 +220,7 @@ async function saveRename() {
               <div class="content">
                 <p>
                   <strong>{{ user.display_name }}</strong>
+                  <span v-if="user.account_type === 'bot'" class="tag">Бот</span>
                   <br />
                   <small>
                     @{{ user.username }} · {{ user.role }} ·
@@ -225,6 +232,7 @@ async function saveRename() {
             <div class="media-right">
               <div class="buttons are-small">
                 <button
+                  v-if="user.account_type !== 'bot'"
                   class="button"
                   @click="patchUser(user, { role: user.role === 'admin' ? 'member' : 'admin' })"
                 >
@@ -234,7 +242,9 @@ async function saveRename() {
                   {{ user.is_active ? 'Отключить' : 'Включить' }}
                 </button>
                 <button class="button" @click="membership(user)">Команды</button>
-                <button class="button" @click="password(user)">Пароль</button>
+                <button v-if="user.account_type !== 'bot'" class="button" @click="password(user)">
+                  Пароль
+                </button>
               </div>
             </div>
           </article>
@@ -300,6 +310,7 @@ async function saveRename() {
           Записей пока нет.
         </p>
       </div>
+      <BotSettings v-else-if="tab === 'bots'" />
       <ArchiveSettings v-else-if="tab === 'archive'" />
       <BackupSettings v-else />
       <BaseDialog :open="!!renaming" title="Редактировать" @close="cancelRename">

@@ -40,6 +40,7 @@ describe('project directory', () => {
       id: 'u1',
       username: 'admin',
       display_name: 'Admin',
+      account_type: 'human' as const,
       role: 'admin',
       is_active: true,
       created_at: '',
@@ -83,6 +84,7 @@ describe('project directory', () => {
       useSessionStore().user = {
         id: 'u1',
         username: role,
+        account_type: 'human',
         display_name: 'Test user',
         role,
         is_active: true,
