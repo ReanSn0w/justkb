@@ -24,6 +24,7 @@ var (
 )
 
 type User struct {
+	AccountType string   `json:"account_type"`
 	ID          string   `json:"id"`
 	Username    string   `json:"username"`
 	DisplayName string   `json:"display_name"`
@@ -61,9 +62,9 @@ func (s *Service) Login(ctx context.Context, username, password string, ttl time
 	var user User
 	var passwordHash string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, username, display_name, email, avatar_url, role, is_active, password_hash
-		FROM users WHERE lower(username) = lower($1)`, username,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &passwordHash)
+		SELECT id, username, display_name, email, avatar_url, role, is_active, account_type, password_hash
+		FROM users WHERE lower(username) = lower($1) AND account_type='human'`, username,
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType, &passwordHash)
 	if err != nil || !user.IsActive || !VerifyPassword(passwordHash, password) {
 		return Session{}, ErrInvalidCredentials
 	}
@@ -93,13 +94,13 @@ func (s *Service) AuthenticateSession(ctx context.Context, token string) (Princi
 	var principal Principal
 	var csrfDigest []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active,
+		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active, u.account_type,
 		       s.id, s.csrf_digest
 		FROM web_sessions s
 		JOIN users u ON u.id = s.user_id
-		WHERE s.token_digest = $1 AND s.expires_at > $2 AND u.is_active`, digest[:], s.now(),
+		WHERE s.token_digest = $1 AND s.expires_at > $2 AND u.is_active AND u.account_type='human'`, digest[:], s.now(),
 	).Scan(&principal.User.ID, &principal.User.Username, &principal.User.DisplayName,
-		&principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive,
+		&principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive, &principal.User.AccountType,
 		&principal.SessionID, &csrfDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Principal{}, ErrUnauthenticated
@@ -135,7 +136,7 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 
 func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
 	var encoded string
-	if err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = $1 AND is_active`, userID).Scan(&encoded); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = $1 AND is_active AND account_type='human'`, userID).Scan(&encoded); err != nil {
 		return ErrInvalidCredentials
 	}
 	if !VerifyPassword(encoded, currentPassword) {
@@ -181,9 +182,9 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, displayName string)
 func (s *Service) UserByID(ctx context.Context, userID string) (User, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id,username,display_name,email,avatar_url,role,is_active
+		SELECT id,username,display_name,email,avatar_url,role,is_active,account_type
 		FROM users WHERE id=$1 AND is_active`, userID,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrUnauthenticated
 	}
@@ -203,8 +204,8 @@ func (s *Service) CreateAdmin(ctx context.Context, username, displayName, passwo
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO users (id, username, display_name, role, password_hash)
 		VALUES ($1, $2, $3, 'admin', $4)
-		RETURNING id, username, display_name, email, avatar_url, role, is_active`, ids.New(), username, displayName, encoded,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+		RETURNING id, username, display_name, email, avatar_url, role, is_active, account_type`, ids.New(), username, displayName, encoded,
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType)
 	return user, err
 }
 

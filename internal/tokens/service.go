@@ -55,6 +55,29 @@ func (s *Service) Create(ctx context.Context, userID, name string, scopes []stri
 	if name == "" || (expiresAt != nil && !expiresAt.After(s.now())) {
 		return Created{}, ErrInvalidToken
 	}
+	tx, err := appdb.BeginWrite(ctx, s.db)
+	if err != nil {
+		return Created{}, err
+	}
+	defer tx.Rollback()
+	var kind string
+	if err = tx.QueryRowContext(ctx, `SELECT account_type FROM users WHERE id=?`, userID).Scan(&kind); err != nil {
+		return Created{}, err
+	}
+	if kind == "bot" {
+		return Created{}, auth.ErrForbidden
+	}
+	created, err := createInTx(ctx, tx, userID, name, validatedScopes, expiresAt)
+	if err != nil {
+		return Created{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Created{}, err
+	}
+	return created, nil
+}
+
+func createInTx(ctx context.Context, tx *sql.Tx, userID, name string, validatedScopes []string, expiresAt *time.Time) (Created, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return Created{}, fmt.Errorf("generate API token: %w", err)
@@ -65,13 +88,8 @@ func (s *Service) Create(ctx context.Context, userID, name string, scopes []stri
 	if len(prefix) > 20 {
 		prefix = prefix[:20]
 	}
-	tx, err := appdb.BeginWrite(ctx, s.db)
-	if err != nil {
-		return Created{}, err
-	}
-	defer tx.Rollback()
 	var token Token
-	err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest,expires_at)
 		VALUES($1,$2,$3,$4,$5,$6)
 		RETURNING id,name,token_prefix,expires_at,last_used_at,revoked_at,created_at`,
@@ -84,9 +102,6 @@ func (s *Service) Create(ctx context.Context, userID, name string, scopes []stri
 		if _, err := tx.ExecContext(ctx, `INSERT INTO api_token_scopes(token_id,scope) VALUES($1,$2)`, token.ID, scope); err != nil {
 			return Created{}, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return Created{}, err
 	}
 	token.Scopes = validatedScopes
 	return Created{Token: token, Secret: secret}, nil
@@ -114,6 +129,14 @@ func (s *Service) List(ctx context.Context, userID string) ([]Token, error) {
 }
 
 func (s *Service) Revoke(ctx context.Context, userID, tokenID string) error {
+	var kind string
+	if err := s.db.QueryRowContext(ctx, `SELECT account_type FROM users WHERE id=?`, userID).Scan(&kind); err != nil {
+		return err
+	}
+	if kind == "bot" {
+		return auth.ErrForbidden
+	}
+
 	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at=COALESCE(revoked_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND user_id=$2`, tokenID, userID)
 	if err != nil {
 		return err
@@ -132,11 +155,11 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (auth.Princip
 	var principal auth.Principal
 	var scopes []string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id,u.username,u.display_name,u.email,u.avatar_url,u.role,u.is_active,t.id
+		SELECT u.id,u.username,u.display_name,u.email,u.avatar_url,u.role,u.is_active,u.account_type,t.id
 		FROM api_tokens t JOIN users u ON u.id=t.user_id
 		WHERE t.token_digest=$1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>$2) AND u.is_active`,
 		digest[:], s.now(),
-	).Scan(&principal.User.ID, &principal.User.Username, &principal.User.DisplayName, &principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive, &principal.TokenID)
+	).Scan(&principal.User.ID, &principal.User.Username, &principal.User.DisplayName, &principal.User.Email, &principal.User.AvatarURL, &principal.User.Role, &principal.User.IsActive, &principal.User.AccountType, &principal.TokenID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return auth.Principal{}, ErrInvalidToken
 	}
@@ -146,6 +169,9 @@ func (s *Service) Authenticate(ctx context.Context, secret string) (auth.Princip
 	scopes, err = s.scopes(ctx, principal.TokenID)
 	if err != nil {
 		return auth.Principal{}, err
+	}
+	if principal.User.AccountType == "bot" && (len(scopes) != 2 || scopes[0] != "cards:read" || scopes[1] != "cards:write") {
+		return auth.Principal{}, ErrInvalidToken
 	}
 	principal.Scopes = make(map[string]bool, len(scopes))
 	for _, scope := range scopes {

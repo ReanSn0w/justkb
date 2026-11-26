@@ -28,6 +28,7 @@ var (
 var colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 type User struct {
+	AccountType string   `json:"account_type"`
 	ID          string   `json:"id"`
 	Username    string   `json:"username"`
 	DisplayName string   `json:"display_name"`
@@ -79,7 +80,7 @@ func NewService(db *sql.DB) *Service { return &Service{db: db} }
 
 func (s *Service) ListUsers(ctx context.Context, includeInactive bool, groupID string) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active
+		SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, u.role, u.is_active, u.account_type
 		FROM users u
 		WHERE ($1 OR u.is_active) AND ($2 = '' OR EXISTS (
 			SELECT 1 FROM group_members gm WHERE gm.user_id = u.id AND gm.group_id = NULLIF($2, '')
@@ -92,7 +93,7 @@ func (s *Service) ListUsers(ctx context.Context, includeInactive bool, groupID s
 	users := make([]User, 0)
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType); err != nil {
 			return nil, err
 		}
 		user.GroupIDs, err = s.userGroupIDs(ctx, user.ID)
@@ -120,9 +121,9 @@ func (s *Service) CreateUser(ctx context.Context, username, displayName, email, 
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO users (id, username, display_name, email, role, password_hash)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, username, display_name, email, avatar_url, role, is_active`,
+		RETURNING id, username, display_name, email, avatar_url, role, is_active, account_type`,
 		ids.New(), strings.TrimSpace(username), strings.TrimSpace(displayName), emailValue, role, passwordHash,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType)
 	user.GroupIDs = []string{}
 	return user, err
 }
@@ -140,12 +141,15 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 		return User{}, err
 	}
 	defer tx.Rollback()
-	var currentRole string
+	var currentRole, accountType string
 	var currentActive bool
-	if err := tx.QueryRowContext(ctx, `SELECT role,is_active FROM users WHERE id=$1`, id).Scan(&currentRole, &currentActive); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT role,is_active,account_type FROM users WHERE id=$1`, id).Scan(&currentRole, &currentActive, &accountType); errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	} else if err != nil {
 		return User{}, err
+	}
+	if accountType == "bot" && (role != "member" || len([]rune(strings.TrimSpace(displayName))) > 200) {
+		return User{}, auth.ErrForbidden
 	}
 	if currentRole == "admin" && currentActive && (role != "admin" || !active) {
 		var adminCount int
@@ -160,9 +164,9 @@ func (s *Service) UpdateUser(ctx context.Context, id, displayName, email, role s
 	err = tx.QueryRowContext(ctx, `
 		UPDATE users SET display_name = $2, email = $3, role = $4, is_active = $5, updated_at=CURRENT_TIMESTAMP
 		WHERE id = $1
-		RETURNING id, username, display_name, email, avatar_url, role, is_active`,
+		RETURNING id, username, display_name, email, avatar_url, role, is_active, account_type`,
 		id, strings.TrimSpace(displayName), emailValue, role, active,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType)
 	if err != nil {
 		return User{}, err
 	}
@@ -185,9 +189,9 @@ func (s *Service) UserByUsername(ctx context.Context, username string) (User, er
 	}
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id,username,display_name,email,avatar_url,role,is_active
+		SELECT id,username,display_name,email,avatar_url,role,is_active,account_type
 		FROM users WHERE lower(username)=lower($1)`, username,
-	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive)
+	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.Email, &user.AvatarURL, &user.Role, &user.IsActive, &user.AccountType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -241,6 +245,15 @@ func (s *Service) ResetUserPassword(ctx context.Context, userID, password string
 		return err
 	}
 	defer tx.Rollback()
+	var accountType string
+	if err := tx.QueryRowContext(ctx, `SELECT account_type FROM users WHERE id=?`, userID).Scan(&accountType); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if accountType == "bot" {
+		return auth.ErrForbidden
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = $2, updated_at=CURRENT_TIMESTAMP WHERE id = $1`, userID, hash)
 	if err != nil {
 		return err
