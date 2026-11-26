@@ -2,40 +2,40 @@
 
 Источник реализации: `internal/mcpserver`, доменные сервисы `cards`, `board`, `comments`, `archive`. Все идентификаторы — UUID, кроме явно отмеченных альтернатив. Scopes независимы: для обычного агента нужны `cards:read` и `cards:write`. `get_current_user` требует только валидный токен. Чтение требует read, изменения — write; обновление и восстановление проекта дополнительно требуют admin.
 
-| Инструмент | Параметры и правила | Результат / порядок |
-| --- | --- | --- |
-| get_current_user | без параметров | user, groups, token_id, token_scopes |
-| list_columns | без параметров | массив по позиции и ID |
-| list_epics | include_archived=false | массив проектов по имени |
-| get_epic | epic_id | проект, version, restorable_cards |
-| create_epic | name (не пустое), description?, color=#00d1b2 (#RRGGBB) | новый активный проект |
-| update_epic | epic_id, expected_version>=1, name; description?, color=#00d1b2, is_archived=false, restore_mode? | полная замена состояния проекта; при восстановлении project_only / with_cards |
-| restore_epic | epic_id, expected_version>=1, mode=project_only/with_cards | восстановленный проект |
-| list_groups | без параметров | массив по имени |
-| list_users | group_id?, include_inactive=false | массив по отображаемому имени; без секретов |
-| list_tags | без параметров | массив по имени |
-| list_cards | epic_id?, group_id?, assignee_id?, tag_ids?, column_id?, query?, archived=false, limit?, cursor? | items, next_cursor; позиция столбца, числовая позиция карточки, ID по возрастанию |
-| get_card | card_id или card_number; при обоих приоритет card_id | карточка; допускается UUID, JKB-42 или числовой номер |
-| get_card_activity | card_id, limit? | массив последних событий по времени и ID убывающе; без cursor |
-| list_card_movements | from?, to?, actor_user_id?, assignee_id?, project_id?, group_id?, card_id?, limit?, cursor? | period_from, period_to, items, next_cursor; время до секунды и ID убывающе |
-| list_comments | ровно одно непустое card_id / project_id | массив по времени и ID возрастающе; без пагинации |
-| add_comment | ровно одно card_id / project_id, body (не пустой Markdown) | комментарий; архивные цели read-only |
-| create_card | title (не пустой), column_id; description?, epic_id?, group_id?, assignee_id? / assignee_ids?, tag_ids?, due_at? | карточка первой в столбце; архивный проект недопустим |
-| update_card | card_id, expected_version>=1; title?, description?, epic_id?, group_id?, assignee_id? / assignee_ids?, tag_ids? | обновлённая карточка с новой version; архив read-only |
-| assign_card | card_id, expected_version>=1; group_id?, assignee_id? / assignee_ids? | обновлённая карточка; архив read-only |
-| move_card | card_id, expected_version>=1, target_column_id; before_card_id? / after_card_id? | карточка; ссылки только на карточки назначения, обе одновременно запрещены |
-| archive_card | card_id, expected_version>=1 | карточка после архивирования |
-| restore_card | card_id, expected_version>=1 | карточка после восстановления; проект должен быть активен |
-| list_archive | type?, project_id?, q?, from?, to?, state?, history=false, batch_id?, limit?, cursor? | items, next_cursor; время и ID убывающе |
+| Инструмент          | Параметры и правила                                                                                              | Результат / порядок                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| get_current_user    | без параметров                                                                                                   | user, groups, token_id, token_scopes                                              |
+| list_columns        | без параметров                                                                                                   | массив по позиции и ID                                                            |
+| list_epics          | include_archived=false                                                                                           | массив проектов по имени                                                          |
+| get_epic            | epic_id                                                                                                          | проект, version, restorable_cards                                                 |
+| create_epic         | name (не пустое), description?, color=#00d1b2 (#RRGGBB)                                                          | новый активный проект                                                             |
+| update_epic         | epic_id, expected_version>=1, name; description?, color=#00d1b2, is_archived=false, restore_mode?                | полная замена состояния проекта; при восстановлении project_only / with_cards     |
+| restore_epic        | epic_id, expected_version>=1, mode=project_only/with_cards                                                       | восстановленный проект                                                            |
+| list_groups         | без параметров                                                                                                   | массив по имени                                                                   |
+| list_users          | group_id?, include_inactive=false                                                                                | массив по отображаемому имени; без секретов                                       |
+| list_tags           | без параметров                                                                                                   | массив по имени                                                                   |
+| list_cards          | epic_id?, group_id?, assignee_id?, tag_ids?, column_id?, query?, archived=false, limit?, cursor?                 | items, next_cursor; позиция столбца, числовая позиция карточки, ID по возрастанию |
+| get_card            | card_id или card_number; при обоих приоритет card_id                                                             | карточка; допускается UUID, JKB-42 или числовой номер                             |
+| get_card_activity   | card_id, limit?                                                                                                  | массив последних событий по времени и ID убывающе; без cursor                     |
+| list_card_movements | from?, to?, actor_user_id?, assignee_id?, project_id?, group_id?, card_id?, limit?, cursor?                      | period_from, period_to, items, next_cursor; время до секунды и ID убывающе        |
+| list_comments       | ровно одно непустое card_id / project_id                                                                         | массив по времени и ID возрастающе; без пагинации                                 |
+| add_comment         | ровно одно card_id / project_id, body (не пустой Markdown)                                                       | комментарий; архивные цели read-only                                              |
+| create_card         | title (не пустой), column_id; description?, epic_id?, group_id?, assignee_id? / assignee_ids?, tag_ids?, due_at? | карточка первой в столбце; архивный проект недопустим                             |
+| update_card         | card_id, expected_version>=1; title?, description?, epic_id?, group_id?, assignee_id? / assignee_ids?, tag_ids?  | обновлённая карточка с новой version; архив read-only                             |
+| assign_card         | card_id, expected_version>=1; group_id?, assignee_id? / assignee_ids?                                            | обновлённая карточка; архив read-only                                             |
+| move_card           | card_id, expected_version>=1, target_column_id; before_card_id? / after_card_id?                                 | карточка; ссылки только на карточки назначения, обе одновременно запрещены        |
+| archive_card        | card_id, expected_version>=1                                                                                     | карточка после архивирования                                                      |
+| restore_card        | card_id, expected_version>=1                                                                                     | карточка после восстановления; проект должен быть активен                         |
+| list_archive        | type?, project_id?, q?, from?, to?, state?, history=false, batch_id?, limit?, cursor?                            | items, next_cursor; время и ID убывающе                                           |
 
 ## Лимиты и обход страниц
 
-| Инструмент | Default | Максимум | Ноль и отрицательное значение |
-| --- | --- | --- | --- |
-| list_cards | 50 | 100 | используют default |
-| get_card_activity | 50 | 100 | используют default |
-| list_card_movements | 100 | 500 | используют default |
-| list_archive | 30 | 100 | 0 использует default, отрицательное запрещено |
+| Инструмент          | Default | Максимум | Ноль и отрицательное значение                 |
+| ------------------- | ------- | -------- | --------------------------------------------- |
+| list_cards          | 50      | 100      | используют default                            |
+| get_card_activity   | 50      | 100      | используют default                            |
+| list_card_movements | 100     | 500      | используют default                            |
+| list_archive        | 30      | 100      | 0 использует default, отрицательное запрещено |
 
 Для страниц копируйте непрозрачный `next_cursor` в следующий запрос с теми же фильтрами. Завершайте обход при пустом/отсутствующем cursor. Увеличение limit выше максимума не заменяет пагинацию. Справочники и комментарии возвращают массивы без курсоров. Activity возвращает только последние события и не позволяет получить полную историю свыше 100 записей.
 
