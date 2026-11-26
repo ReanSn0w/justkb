@@ -95,7 +95,7 @@ func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHa
 	if tool.Name == "list_archive" {
 		tool.Description += " history=false returns current archive; history=true includes past events. state filters current entity state. batch_id expands cards of a batch. Dates are optional RFC3339 bounds [from,to)."
 	}
-	if schema.Properties["expected_version"] != nil {
+	if schema.Properties["expected_version"] != nil && tool.Name != "create_epic" {
 		tool.Description += " Read the object first. On a version conflict, read again and reconsider the change; never blindly retry a mutation."
 	}
 	if tool.Name != "get_current_user" {
