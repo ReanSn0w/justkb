@@ -7,14 +7,14 @@ import (
 )
 
 func (s *services) addArchiveTools(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{Name: "list_archive", Description: "Read the shared archive timeline, including project batches and past transitions.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, input archive.Filters) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "list_archive", Description: "Read the shared archive timeline, including project batches and past transitions.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, _ *mcp.CallToolRequest, input archive.Filters) (*mcp.CallToolResult, any, error) {
 		if result := requireScope(ctx, "cards:read"); result != nil {
 			return result, nil, nil
 		}
 		page, err := s.archive.List(ctx, input)
 		return domainResult(page, err)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "restore_epic", Description: "Restore a project. Admin only. Read its version and restorable_cards first; choose project_only or with_cards."}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+	addTool(server, &mcp.Tool{Name: "restore_epic", Description: "Restore a project. Admin only. Read its version and restorable_cards first; choose project_only or with_cards."}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 		EpicID          string `json:"epic_id"`
 		ExpectedVersion int64  `json:"expected_version"`
 		Mode            string `json:"mode"`
