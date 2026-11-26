@@ -25,7 +25,7 @@ func TestSQLiteMigrationsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 8 {
+	if version != 9 {
 		t.Fatalf("version=%d", version)
 	}
 	if err := goose.DownTo(db, directory, 0); err != nil {
@@ -174,7 +174,7 @@ func TestBotAccountMigration(t *testing.T) {
  INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest) VALUES('h1','human','one','prefix',x'01'),('h2','human','two','prefix',x'02');`); err != nil {
 		t.Fatal(err)
 	}
-	if err = goose.Up(db, dir); err != nil {
+	if err = goose.UpTo(db, dir, 8); err != nil {
 		t.Fatal(err)
 	}
 	var n int
@@ -196,5 +196,46 @@ func TestBotAccountMigration(t *testing.T) {
 	}
 	if err = goose.Down(db, dir); err == nil {
 		t.Fatal("destructive bot rollback accepted")
+	}
+}
+
+func TestProjectUpdatesMigration(t *testing.T) {
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "updates.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	const directory = "../../migrations"
+	if err = goose.UpTo(db, directory, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO epics(id,name,color) VALUES('p','Existing','#112233')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = goose.Up(db, directory); err != nil {
+		t.Fatal(err)
+	}
+	var name, generation string
+	if err = db.QueryRow(`SELECT name FROM epics WHERE id='p'`).Scan(&name); err != nil || name != "Existing" {
+		t.Fatalf("preservation: %s %v", name, err)
+	}
+	if err = db.QueryRow(`SELECT generation FROM project_update_generation`).Scan(&generation); err != nil || len(generation) != 32 {
+		t.Fatalf("generation: %q %v", generation, err)
+	}
+	if _, err = db.Exec(`INSERT INTO project_updates(id,payload) VALUES('e','{}'); INSERT INTO project_update_links VALUES('p',1); DELETE FROM epics WHERE id='p'`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err = db.QueryRow(`SELECT count(*) FROM project_update_links WHERE project_id='p' AND event_sequence>0`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("history lost: %d %v", n, err)
+	}
+	if _, err = db.Exec(`INSERT INTO project_update_links VALUES('p',1)`); err == nil {
+		t.Fatal("duplicate link accepted")
+	}
+	if _, err = db.Exec(`INSERT INTO project_updates(id,payload) VALUES('bad','not json')`); err == nil {
+		t.Fatal("invalid payload accepted")
 	}
 }
