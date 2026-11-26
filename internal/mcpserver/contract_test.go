@@ -41,6 +41,16 @@ func TestAdvertisedContractAndReportPagination(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tool := range listed.Tools {
+		guidance := map[string][]string{
+			"list_columns": {"allow_card_creation", "does not restrict moving or restoring", "If no column allows creation", "do not attempt a workaround"},
+			"create_card":  {"allow_card_creation=true", "card_creation_not_allowed", "refresh list_columns", "If no column allows creation", "Do not create elsewhere and immediately move"},
+			"move_card":    {"allow_card_creation=false does not restrict moving", "Do not use create-then-move"},
+		}
+		for _, phrase := range guidance[tool.Name] {
+			if !strings.Contains(tool.Description, phrase) {
+				t.Errorf("%s missing creation policy guidance %q", tool.Name, phrase)
+			}
+		}
 		raw, _ := json.Marshal(tool.InputSchema)
 		var schema struct {
 			Properties map[string]struct {

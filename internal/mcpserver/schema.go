@@ -86,11 +86,14 @@ func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHa
 	if tool.Name == "update_card" || tool.Name == "assign_card" {
 		tool.Description += " Omitted fields keep their value. Empty group_id/epic_id clears the link; null keeps it. assignee_id=null or empty clears only the primary assignee; assignee_ids=[] clears all. Never combine assignee_id and assignee_ids. Empty tag_ids clears tags; null keeps them. Archived cards are read-only."
 	}
+	if tool.Name == "list_columns" {
+		tool.Description += " Each column includes allow_card_creation: true permits creating new cards; false prohibits creation for every actor, including admins and bots. This flag does not restrict moving or restoring existing cards. If no column allows creation, report that creation is disabled and ask an administrator to configure an entry column; do not attempt a workaround."
+	}
 	if tool.Name == "create_card" {
-		tool.Description += " Choose a column with allow_card_creation=true from list_columns; the server rejects all other columns, including for admins. title must be non-blank. Never combine assignee_id and assignee_ids. Places the card first in the target column. An archived project cannot receive new cards."
+		tool.Description += " Choose a column with allow_card_creation=true from list_columns; the server rejects all other columns, including for admins. On card_creation_not_allowed, refresh list_columns and explain the restriction. If no column allows creation, report that creation is disabled and ask an administrator to configure an entry column; do not attempt a workaround. Do not create elsewhere and immediately move solely to bypass the intended entry stage. title must be non-blank. Never combine assignee_id and assignee_ids. Places the card first in the target column. An archived project cannot receive new cards."
 	}
 	if tool.Name == "move_card" {
-		tool.Description += " before_card_id and after_card_id are mutually exclusive and must refer to a card in the target column. Omit both to append to the column. Archived cards are read-only."
+		tool.Description += " before_card_id and after_card_id are mutually exclusive and must refer to a card in the target column. Omit both to append to the column. allow_card_creation=false does not restrict moving an existing card into the destination; it only prohibits creating a new card there. Do not use create-then-move solely to bypass the intended entry stage. Archived cards are read-only."
 	}
 	if tool.Name == "list_archive" {
 		tool.Description += " history=false returns current archive; history=true includes past events. state filters current entity state. batch_id expands cards of a batch. Dates are optional RFC3339 bounds [from,to)."
