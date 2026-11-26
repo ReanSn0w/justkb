@@ -25,7 +25,7 @@ func TestSQLiteMigrationsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 7 {
+	if version != 8 {
 		t.Fatalf("version=%d", version)
 	}
 	if err := goose.DownTo(db, directory, 0); err != nil {
@@ -154,5 +154,47 @@ func TestColumnCreationPolicyMigration(t *testing.T) {
 	}
 	if _, err := db.Exec(`UPDATE board_columns SET allow_card_creation=2 WHERE id='new'`); err == nil {
 		t.Fatal("invalid boolean accepted")
+	}
+}
+
+func TestBotAccountMigration(t *testing.T) {
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "bots.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	const dir = "../../migrations"
+	if err = goose.UpTo(db, dir, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO users(id,username,display_name,password_hash) VALUES('human','human','Human','unused');
+ INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest) VALUES('h1','human','one','prefix',x'01'),('h2','human','two','prefix',x'02');`); err != nil {
+		t.Fatal(err)
+	}
+	if err = goose.Up(db, dir); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err = db.QueryRow(`SELECT count(*) FROM users u JOIN api_tokens t ON t.user_id=u.id WHERE account_type='human'`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("human tokens lost: %d %v", n, err)
+	}
+	if _, err = db.Exec(`INSERT INTO users(id,username,display_name,password_hash,account_type) VALUES('bot','bot','Bot','','bot');
+ INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest) VALUES('b1','bot','one','prefix',x'03');`); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO api_tokens(id,user_id,name,token_prefix,token_digest) VALUES('b2','bot','two','prefix',x'04')`,
+		`UPDATE users SET role='admin' WHERE id='bot'`, `UPDATE users SET password_hash='password' WHERE id='bot'`,
+		`UPDATE users SET account_type='human' WHERE id='bot'`, `UPDATE api_tokens SET user_id='bot' WHERE id='h1'`,
+	} {
+		if _, err = db.Exec(statement); err == nil {
+			t.Fatalf("invalid mutation accepted: %s", statement)
+		}
+	}
+	if err = goose.Down(db, dir); err == nil {
+		t.Fatal("destructive bot rollback accepted")
 	}
 }
