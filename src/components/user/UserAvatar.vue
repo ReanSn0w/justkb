@@ -29,7 +29,10 @@ const fallback = computed(() => {
 </script>
 
 <template>
-  <figure :class="['image', `is-${size}x${size}`]" :title="user?.display_name || 'Пользователь'">
+  <figure
+    :class="['image', 'user-avatar', `is-${size}x${size}`]"
+    :title="user?.display_name || 'Пользователь'"
+  >
     <img
       class="is-rounded"
       :src="user?.avatar_url || fallback"
@@ -39,3 +42,16 @@ const fallback = computed(() => {
     />
   </figure>
 </template>
+
+<style scoped>
+.user-avatar {
+  flex-shrink: 0;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+</style>
