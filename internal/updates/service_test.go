@@ -25,7 +25,7 @@ func TestPollingCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer tx.Rollback()
-		err = Append(ctx, tx, Actor{}, Event{Type: "card.updated", EntityType: "card", EntityID: "c", ProjectIDs: projects, OccurredAt: time.Unix(1, 0), Changes: map[string]any{}})
+		err = Append(ctx, tx, Actor{}, Event{Type: "card.updated", EntityType: "card", EntityID: "c", ProjectIDs: projects, OccurredAt: time.Unix(1, 0).In(time.FixedZone("local", 3*60*60)), Changes: map[string]any{}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,6 +43,9 @@ func TestPollingCursor(t *testing.T) {
 	first, err := s.List(ctx, "a", initial.NextCursor, 1)
 	if err != nil || len(first.Items) != 1 || !first.HasMore {
 		t.Fatalf("first: %+v %v", first, err)
+	}
+	if first.Items[0].OccurredAt.Location() != time.UTC {
+		t.Fatal("event timestamp is not UTC")
 	}
 	appendEvent("a") // committed between pages, with the same timestamp
 	next, err := s.List(ctx, "a", first.NextCursor, 1)
@@ -110,5 +113,62 @@ func TestAppendRollback(t *testing.T) {
 	var count int
 	if err = db.QueryRow(`SELECT count(*) FROM project_updates`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("rollback: %d %v", count, err)
+	}
+}
+
+func TestPollingDuringConcurrentCommits(t *testing.T) {
+	db := testdb.Open(t).DB
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.Exec(`INSERT INTO epics(id,name,color) VALUES('p','Concurrent','#112233')`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(db)
+	initial, err := s.List(ctx, "p", "now", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		for range 40 {
+			tx, err := appdb.BeginWrite(ctx, db)
+			if err != nil {
+				done <- err
+				return
+			}
+			err = Append(ctx, tx, Actor{}, Event{ProjectIDs: []string{"p"}, EntityType: "card", EntityID: "c", Type: "card.updated"})
+			if err != nil {
+				tx.Rollback()
+				done <- err
+				return
+			}
+			if err = tx.Commit(); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	seen := map[string]bool{}
+	cursor := initial.NextCursor
+	for len(seen) < 40 {
+		page, err := s.List(ctx, "p", cursor, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range page.Items {
+			if seen[event.ID] {
+				t.Fatal("duplicate across committed cursors")
+			}
+			seen[event.ID] = true
+		}
+		cursor = page.NextCursor
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	page, err := s.List(ctx, "p", cursor, 3)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("final page: %+v %v", page, err)
 	}
 }

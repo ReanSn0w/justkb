@@ -72,6 +72,7 @@ func Append(ctx context.Context, tx *sql.Tx, actor Actor, e Event) error {
 	if e.OccurredAt.IsZero() {
 		e.OccurredAt = time.Now().UTC()
 	}
+	e.OccurredAt = e.OccurredAt.UTC()
 	e.ActorType = "system"
 	if actor.UserID != "" {
 		e.ActorType = "user"
