@@ -15,6 +15,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 var (
@@ -260,6 +261,9 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if err := recordActivity(ctx, tx, actor, card.ID, "created", map[string]any{"version": card.Version}); err != nil {
 		return Card{}, err
 	}
+	if err := updates.RecordChange(ctx, tx, updates.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, "card", card.ID, "created", updates.Snapshot{}); err != nil {
+		return Card{}, err
+	}
 	if err := archive.RefreshProjects(ctx, tx, time.Now(), input.EpicID); err != nil {
 		return Card{}, err
 	}
@@ -432,6 +436,10 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 	if input.DueAt != nil {
 		dueAt = *input.DueAt
 	}
+	before, err := updates.Capture(ctx, tx, "card", cardID)
+	if err != nil {
+		return Card{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE cards SET title=$3,description=$4,epic_id=NULLIF($5,''),group_id=NULLIF($6,''),
 		assignee_id=NULLIF($7,''),due_at=$8,version=version+1,updated_at=CURRENT_TIMESTAMP
@@ -453,6 +461,9 @@ func (s *Service) Update(ctx context.Context, actor Actor, cardID string, input 
 		}
 	}
 	if err := recordActivity(ctx, tx, actor, cardID, "updated", map[string]any{"from_version": input.ExpectedVersion}); err != nil {
+		return Card{}, err
+	}
+	if err := updates.RecordChange(ctx, tx, updates.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, "card", cardID, "updated", before); err != nil {
 		return Card{}, err
 	}
 	if err := archive.RefreshProjects(ctx, tx, time.Now(), value(current.EpicID), epicID); err != nil {
@@ -491,6 +502,10 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 	if err != nil {
 		return Card{}, err
 	}
+	before, err := updates.Capture(ctx, tx, "card", cardID)
+	if err != nil {
+		return Card{}, err
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE cards SET column_entered_at=CASE WHEN column_id<>$3 THEN CURRENT_TIMESTAMP ELSE column_entered_at END,column_id=$3,position=$4,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND version=$2`, cardID, input.ExpectedVersion, input.TargetColumnID, position)
 	if err != nil {
 		return Card{}, err
@@ -499,6 +514,9 @@ func (s *Service) Move(ctx context.Context, actor Actor, cardID string, input Mo
 		return Card{}, ErrVersionConflict
 	}
 	if err := recordActivity(ctx, tx, actor, cardID, "moved", map[string]any{"from_column_id": current.ColumnID, "to_column_id": input.TargetColumnID}); err != nil {
+		return Card{}, err
+	}
+	if err := updates.RecordChange(ctx, tx, updates.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, "card", cardID, "moved", before); err != nil {
 		return Card{}, err
 	}
 	if err := archive.RefreshProjects(ctx, tx, time.Now(), value(current.EpicID)); err != nil {

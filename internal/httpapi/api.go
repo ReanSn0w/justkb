@@ -25,6 +25,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 const jsonBodyLimit = 1 << 20
@@ -721,7 +722,8 @@ func (a *api) downloadAttachment(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, download.File)
 }
 func (a *api) deleteAttachment(w http.ResponseWriter, r *http.Request) {
-	if err := a.attachments.Delete(r.Context(), r.PathValue("id")); err != nil {
+	p, _ := PrincipalFromContext(r.Context())
+	if err := a.attachments.Delete(r.Context(), r.PathValue("id"), updates.Actor{UserID: p.User.ID, TokenID: p.TokenID}); err != nil {
 		handleError(w, r, err)
 		return
 	}

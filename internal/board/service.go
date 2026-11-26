@@ -14,6 +14,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/auth"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 var (
@@ -467,24 +468,31 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 	if strings.TrimSpace(name) == "" || !colorPattern.MatchString(color) {
 		return Epic{}, ErrValidation
 	}
+	tx, err := appdb.BeginWrite(ctx, s.db)
+	if err != nil {
+		return Epic{}, err
+	}
+	defer tx.Rollback()
+	actor := updates.Actor{}
+	if len(options) > 0 {
+		actor = updates.Actor{UserID: options[0].Actor.UserID, TokenID: options[0].Actor.TokenID}
+	}
 	if id == "" {
 		if archived {
 			return Epic{}, ErrValidation
 		}
 		id = ids.New()
-		_, err := s.db.ExecContext(ctx, `INSERT INTO epics(id,name,description,color,is_archived) VALUES($1,$2,$3,$4,$5)`, id, strings.TrimSpace(name), description, color, archived)
+		_, err := tx.ExecContext(ctx, `INSERT INTO epics(id,name,description,color,is_archived) VALUES($1,$2,$3,$4,$5)`, id, strings.TrimSpace(name), description, color, archived)
 		if err != nil {
+			return Epic{}, err
+		}
+		if err := updates.RecordChange(ctx, tx, actor, "project", id, "created", updates.Snapshot{}); err != nil {
 			return Epic{}, err
 		}
 	} else {
 		if len(options) != 1 || options[0].ExpectedVersion < 1 {
 			return Epic{}, ErrValidation
 		}
-		tx, err := appdb.BeginWrite(ctx, s.db)
-		if err != nil {
-			return Epic{}, err
-		}
-		defer tx.Rollback()
 		var version int64
 		if err := tx.QueryRowContext(ctx, `SELECT version FROM epics WHERE id=$1`, id).Scan(&version); errors.Is(err, sql.ErrNoRows) {
 			return Epic{}, ErrNotFound
@@ -504,6 +512,10 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 		if currentArchived && (strings.TrimSpace(name) != oldName || color != oldColor || ((description != nil) != oldDescription.Valid) || (description != nil && *description != oldDescription.String)) {
 			return Epic{}, archive.ErrReadOnly
 		}
+		before, err := updates.Capture(ctx, tx, "project", id)
+		if err != nil {
+			return Epic{}, err
+		}
 		if currentArchived != archived {
 			if err := archive.Project(ctx, tx, options[0].Actor, id, version, archived, options[0].RestoreMode, time.Now()); err != nil {
 				return Epic{}, err
@@ -520,9 +532,13 @@ func (s *Service) SaveEpic(ctx context.Context, id, name, color string, descript
 			}
 		}
 
-		if err := tx.Commit(); err != nil {
+		before.Fields["is_archived"] = archived
+		if err := updates.RecordChange(ctx, tx, actor, "project", id, "updated", before); err != nil {
 			return Epic{}, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Epic{}, err
 	}
 	return s.GetEpic(ctx, id)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 var (
@@ -110,6 +111,9 @@ func (s *Service) create(ctx context.Context, cardID, epicID string, actor Actor
 		VALUES($1,NULLIF($2,''),NULLIF($3,''),$4,$5,$6)`,
 		commentID, cardID, epicID, actor.UserID, tokenID, body,
 	); err != nil {
+		return Comment{}, err
+	}
+	if err := updates.Related(ctx, tx, updates.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, "comment.created", commentID, cardID, epicID, map[string]any{"comment_id": commentID}); err != nil {
 		return Comment{}, err
 	}
 	if err := tx.Commit(); err != nil {
