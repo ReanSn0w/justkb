@@ -21,6 +21,7 @@ export interface Group extends Timestamps {
   description?: string | null
 }
 export interface BoardColumn extends Timestamps {
+  allow_card_creation: boolean
   id: UUID
   name: string
   position: number

@@ -149,6 +149,7 @@ export const useBoardStore = defineStore('board', () => {
     byColumn,
     initialize,
     loadCards,
+    loadDirectories,
     create,
     move,
   }

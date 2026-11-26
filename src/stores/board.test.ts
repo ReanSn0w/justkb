@@ -36,7 +36,16 @@ describe('board store', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     vi.mocked(directoryApi.columns).mockResolvedValue({
-      items: [{ id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' }],
+      items: [
+        {
+          id: 'a',
+          name: 'Todo',
+          position: 1,
+          allow_card_creation: true,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
       next_cursor: null,
     })
     vi.mocked(epicsApi.list).mockResolvedValue(empty)
@@ -55,7 +64,16 @@ describe('board store', () => {
   })
   it('orders numeric position strings numerically', () => {
     const store = useBoardStore()
-    store.columns = [{ id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' }]
+    store.columns = [
+      {
+        id: 'a',
+        name: 'Todo',
+        position: 1,
+        allow_card_creation: true,
+        created_at: '',
+        updated_at: '',
+      },
+    ]
     store.cards = [
       { ...card, id: '10', position: '10000' },
       { ...card, id: '2', position: '2.5' },

@@ -66,7 +66,14 @@ describe('card details layout', () => {
     pinia = createPinia()
     setActivePinia(pinia)
     useBoardStore().columns = [
-      { id: 'backlog', name: 'Backlog', position: 100, created_at: '', updated_at: '' },
+      {
+        id: 'backlog',
+        name: 'Backlog',
+        position: 100,
+        allow_card_creation: true,
+        created_at: '',
+        updated_at: '',
+      },
     ]
     mockedRoute.name = 'card'
     mockedRoute.query = {}
@@ -149,7 +156,14 @@ describe('return from card editing', () => {
     pinia = createPinia()
     setActivePinia(pinia)
     useBoardStore().columns = [
-      { id: 'backlog', name: 'Backlog', position: 100, created_at: '', updated_at: '' },
+      {
+        id: 'backlog',
+        name: 'Backlog',
+        position: 100,
+        allow_card_creation: true,
+        created_at: '',
+        updated_at: '',
+      },
     ]
     mockedRoute.name = 'card-edit'
     mockedRoute.query = {

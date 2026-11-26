@@ -9,7 +9,7 @@ import BoardFilters from '../components/board/BoardFilters.vue'
 import StatusState from '../components/ui/StatusState.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import { useToastStore } from '../stores/toasts'
-import type { Card } from '../api'
+import { ApiError, type Card } from '../api'
 import { filtersFromQuery, queryFromFilters, mergeFilterQuery } from '../features/filters'
 import { cardMoveReference } from '../features/card-order'
 const board = useBoardStore(),
@@ -76,8 +76,14 @@ async function add(column: string) {
   try {
     await board.create(column, title)
     draft.value[column] = ''
-  } catch {
-    toasts.show('Не удалось создать карточку', 'error')
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.code === 'card_creation_not_allowed') {
+      toasts.show(
+        'Создание в этом столбце запрещено. Текст сохранён; выберите разрешённый столбец.',
+        'error',
+      )
+      await board.loadDirectories().catch(() => undefined)
+    } else toasts.show('Не удалось создать карточку', 'error')
   }
 }
 async function reordered(event: SortableEvent) {
@@ -134,6 +140,14 @@ async function keyboard(card: Card, direction: -1 | 1) {
   </section>
   <div v-else data-board-scroll class="is-overflow-x-auto" aria-label="Kanban-доска">
     <section class="section pt-0">
+      <p
+        v-if="!board.columns.some((column) => column.allow_card_creation)"
+        class="notification"
+        role="status"
+      >
+        Создание карточек запрещено во всех столбцах. Администратор может разрешить его в настройках
+        колонок.
+      </p>
       <div class="columns is-mobile is-variable is-4 is-flex-wrap-nowrap">
         <div
           v-for="column in board.columns"
@@ -152,7 +166,11 @@ async function keyboard(card: Card, direction: -1 | 1) {
                 >
               </div>
             </header>
-            <form class="field has-addons mb-4" @submit.prevent="add(column.id)">
+            <form
+              v-if="column.allow_card_creation"
+              class="field has-addons mb-4"
+              @submit.prevent="add(column.id)"
+            >
               <div class="control is-expanded">
                 <input
                   v-model="draft[column.id]"
@@ -171,6 +189,14 @@ async function keyboard(card: Card, direction: -1 | 1) {
                 >
               </div>
             </form>
+            <div v-if="!column.allow_card_creation && draft[column.id]" class="notification">
+              <label :for="`saved-draft-${column.id}`">Сохранённый текст карточки</label>
+              <textarea
+                :id="`saved-draft-${column.id}`"
+                v-model="draft[column.id]"
+                class="textarea"
+              />
+            </div>
             <div data-card-list :data-column-id="column.id">
               <div v-for="card in board.byColumn[column.id]" :key="card.id" :data-card-id="card.id">
                 <CardTile :card="card" @move="keyboard(card, $event)" />

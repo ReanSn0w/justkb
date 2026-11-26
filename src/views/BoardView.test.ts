@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cardsApi, directoryApi, epicsApi, type Card } from '../api'
+import { ApiError, cardsApi, directoryApi, epicsApi, type Card } from '../api'
 import BoardView from './BoardView.vue'
 
 const sortableState = vi.hoisted(() => ({
@@ -66,8 +66,22 @@ describe('board', () => {
     vi.clearAllMocks()
     vi.mocked(directoryApi.columns).mockResolvedValue({
       items: [
-        { id: 'a', name: 'Todo', position: 1, created_at: '', updated_at: '' },
-        { id: 'b', name: 'Done', position: 2, created_at: '', updated_at: '' },
+        {
+          id: 'a',
+          name: 'Todo',
+          position: 1,
+          allow_card_creation: true,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: 'b',
+          name: 'Done',
+          position: 2,
+          allow_card_creation: true,
+          created_at: '',
+          updated_at: '',
+        },
       ],
       next_cursor: null,
     })
@@ -85,6 +99,50 @@ describe('board', () => {
       position: id === '2' ? '0' : '2000',
       version: 2,
     }))
+  })
+
+  it('keeps drop zones when all creation is disabled', async () => {
+    vi.mocked(directoryApi.columns).mockResolvedValue({
+      items: [
+        {
+          id: 'a',
+          name: 'Todo',
+          position: 1,
+          allow_card_creation: false,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      next_cursor: null,
+    })
+    const wrapper = await mountedBoard()
+    expect(wrapper.find('input[placeholder="Новая карточка…"]').exists()).toBe(false)
+    expect(wrapper.find('[data-card-list]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Администратор может разрешить')
+  })
+
+  it('preserves the draft when the server disables creation', async () => {
+    const wrapper = await mountedBoard()
+    await wrapper.get('input[placeholder="Новая карточка…"]').setValue('Keep this draft')
+    vi.mocked(cardsApi.create).mockRejectedValueOnce(
+      new ApiError(409, 'card_creation_not_allowed', 'Forbidden', {}),
+    )
+    vi.mocked(directoryApi.columns).mockResolvedValue({
+      items: [
+        {
+          id: 'a',
+          name: 'Todo',
+          position: 1,
+          allow_card_creation: false,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      next_cursor: null,
+    })
+    await wrapper.get('form.field').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get<HTMLTextAreaElement>('textarea').element.value).toBe('Keep this draft')
   })
 
   afterEach(() => document.body.replaceChildren())
