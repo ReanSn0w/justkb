@@ -121,6 +121,16 @@ func TestAdvertisedContractAndReportPagination(t *testing.T) {
 			t.Errorf("%s missing limit", tc.name)
 		}
 	}
+	if _, err := db.Exec(`UPDATE board_columns SET allow_card_creation=0 WHERE id=?`, column); err != nil {
+		t.Fatal(err)
+	}
+	denied := call("create_card", map[string]any{"title": "Forbidden", "column_id": column})
+	if !denied.IsError {
+		t.Fatal("MCP admin bypassed creation policy")
+	}
+	if text, ok := denied.Content[0].(*mcp.TextContent); !ok || !strings.Contains(text.Text, "card_creation_not_allowed") {
+		t.Fatal("missing policy error")
+	}
 	seen := map[string]bool{}
 	cursor := ""
 	for {
