@@ -14,6 +14,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/cards"
 	"github.com/ReanSn0w/justkb/internal/testdb"
 	"github.com/ReanSn0w/justkb/internal/tokens"
+	"github.com/ReanSn0w/justkb/internal/updates"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -95,7 +96,11 @@ func TestMCPIntegration(t *testing.T) {
 	if err != nil || columns.IsError {
 		t.Fatalf("list_columns result=%#v err=%v", columns, err)
 	}
-	createdCard, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "create_card", Arguments: map[string]any{"title": "MCP card", "column_id": columnID}})
+	project, err := boardService.SaveEpic(ctx, "", "Events", "#112233", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdCard, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "create_card", Arguments: map[string]any{"title": "MCP card", "column_id": columnID, "epic_id": project.ID}})
 	if err != nil || createdCard.IsError {
 		t.Fatalf("create_card result=%#v err=%v", createdCard, err)
 	}
@@ -125,6 +130,16 @@ func TestMCPIntegration(t *testing.T) {
 	addedComment, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "add_comment", Arguments: map[string]any{"card_id": cardID, "body": "Use the discussion requirement"}})
 	if err != nil || addedComment.IsError {
 		t.Fatalf("add_comment result=%#v err=%v", addedComment, err)
+	}
+	eventPage, err := updates.NewService(db).List(ctx, project.ID, "", 100)
+	if err != nil || len(eventPage.Items) != 4 {
+		t.Fatalf("MCP events: %+v %v", eventPage, err)
+	}
+	for i, kind := range []string{"card.created", "card.moved", "comment.created"} {
+		e := eventPage.Items[i+1]
+		if e.Type != kind || e.ActorTokenID == nil || *e.ActorTokenID != created.ID || e.ActorUserID == nil || *e.ActorUserID != user.ID {
+			t.Fatalf("MCP event: %+v", e)
+		}
 	}
 	listedComments, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_comments", Arguments: map[string]any{"card_id": cardID}})
 	if err != nil || listedComments.IsError {

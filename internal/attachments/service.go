@@ -18,6 +18,7 @@ import (
 	"github.com/ReanSn0w/justkb/internal/archive"
 	appdb "github.com/ReanSn0w/justkb/internal/database"
 	"github.com/ReanSn0w/justkb/internal/ids"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 var (
@@ -127,6 +128,15 @@ func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, origi
 	if err != nil {
 		return Metadata{}, err
 	}
+	if err := os.Rename(temporaryPath, finalPath); err != nil {
+		return Metadata{}, fmt.Errorf("publish attachment: %w", err)
+	}
+	published := false
+	defer func() {
+		if !published {
+			_ = os.Remove(finalPath)
+		}
+	}()
 	tx, err := appdb.BeginWrite(ctx, s.db)
 	if err != nil {
 		return Metadata{}, err
@@ -145,13 +155,13 @@ func (s *Service) upload(ctx context.Context, cardID, epicID, actorUserID, origi
 	if err != nil {
 		return Metadata{}, err
 	}
-	if err := os.Rename(temporaryPath, finalPath); err != nil {
-		return Metadata{}, fmt.Errorf("publish attachment: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		_ = os.Remove(finalPath)
+	if err := updates.Related(ctx, tx, updates.Actor{UserID: actorUserID}, "attachment.added", metadata.ID, cardID, epicID, map[string]any{"attachment_id": metadata.ID}); err != nil {
 		return Metadata{}, err
 	}
+	if err := tx.Commit(); err != nil {
+		return Metadata{}, err
+	}
+	published = true
 	metadata.storageName = storageName
 	return metadata, nil
 }
@@ -194,7 +204,11 @@ func (s *Service) Open(ctx context.Context, id string) (Download, error) {
 	return Download{Metadata: metadata, File: file}, nil
 }
 
-func (s *Service) Delete(ctx context.Context, id string) error {
+func (s *Service) Delete(ctx context.Context, id string, actors ...updates.Actor) error {
+	actor := updates.Actor{}
+	if len(actors) > 0 {
+		actor = actors[0]
+	}
 	metadata, err := s.metadata(ctx, id)
 	if err != nil {
 		return err
@@ -232,6 +246,9 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE id=$1`, id); err != nil {
+		return err
+	}
+	if err := updates.Related(ctx, tx, actor, "attachment.deleted", id, cardID, epicID, map[string]any{"attachment_id": id}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

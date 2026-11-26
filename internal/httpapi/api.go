@@ -25,11 +25,13 @@ import (
 	"github.com/ReanSn0w/justkb/internal/maintenance"
 	"github.com/ReanSn0w/justkb/internal/ratelimit"
 	"github.com/ReanSn0w/justkb/internal/tokens"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 const jsonBodyLimit = 1 << 20
 
 type api struct {
+	updates       *updates.Service
 	archive       *archive.Service
 	auth          *auth.Service
 	avatars       *avatars.Service
@@ -58,6 +60,7 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 		panic(err)
 	}
 	server := &api{
+		updates: updates.NewService(deps.DB),
 		archive: archive.NewService(deps.DB),
 		auth:    auth.NewService(deps.DB), board: board.NewService(deps.DB), cards: cards.NewService(deps.DB),
 		avatars:     avatarService,
@@ -104,7 +107,8 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 	mux.Handle("POST /api/v1/columns/reorder", server.admin(http.HandlerFunc(server.reorderColumns)))
 	mux.Handle("DELETE /api/v1/columns/{id}", server.admin(http.HandlerFunc(server.deleteColumn)))
 
-	mux.Handle("GET /api/v1/epics", server.member(http.HandlerFunc(server.listEpics)))
+	mux.Handle("GET /api/v1/epics", server.projectReader(http.HandlerFunc(server.listEpics)))
+	mux.Handle("GET /api/v1/epics/{id}/updates", server.projectReader(http.HandlerFunc(server.projectUpdates)))
 	mux.Handle("POST /api/v1/epics", server.member(http.HandlerFunc(server.createEpic)))
 	mux.Handle("GET /api/v1/epics/{id}", server.member(http.HandlerFunc(server.getEpic)))
 	mux.Handle("PATCH /api/v1/epics/{id}", server.admin(http.HandlerFunc(server.updateEpic)))
@@ -721,7 +725,8 @@ func (a *api) downloadAttachment(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, download.File)
 }
 func (a *api) deleteAttachment(w http.ResponseWriter, r *http.Request) {
-	if err := a.attachments.Delete(r.Context(), r.PathValue("id")); err != nil {
+	p, _ := PrincipalFromContext(r.Context())
+	if err := a.attachments.Delete(r.Context(), r.PathValue("id"), updates.Actor{UserID: p.User.ID, TokenID: p.TokenID}); err != nil {
 		handleError(w, r, err)
 		return
 	}

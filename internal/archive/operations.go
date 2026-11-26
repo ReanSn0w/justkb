@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ReanSn0w/justkb/internal/ids"
+	"github.com/ReanSn0w/justkb/internal/updates"
 )
 
 var (
@@ -50,7 +51,20 @@ func event(ctx context.Context, tx *sql.Tx, actor Actor, kind, id, project, acti
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO archive_events(id,entity_type,entity_id,epic_id,action,occurred_at,reason,actor_type,actor_user_id,batch_id,title,number,rule_days) VALUES($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13)`, ids.New(), kind, id, project, action, stamp(now), reason, actorType, user, batch, title, number, actor.RuleDays)
-	return err
+	if err != nil {
+		return err
+	}
+	snapshot, err := updates.Capture(ctx, tx, kind, id)
+	if err != nil {
+		return err
+	}
+	e := updates.Event{Type: kind + "." + action, EntityType: kind, EntityID: id, ProjectIDs: []string{project}, Version: snapshot.Version, OccurredAt: now,
+		Changes: map[string]any{"is_archived": map[string]any{"before": action == "restored", "after": action == "archived"}, "batch_id": batch, "reason": reason}}
+	if kind == "card" {
+		e.CardID = id
+		e.CardNumber = snapshot.Number
+	}
+	return updates.Append(ctx, tx, updates.Actor{UserID: actor.UserID, TokenID: actor.TokenID}, e)
 }
 
 func Card(ctx context.Context, tx *sql.Tx, actor Actor, id string, version int64, archived bool, batch string, now time.Time) error {
