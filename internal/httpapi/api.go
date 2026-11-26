@@ -80,6 +80,11 @@ func registerAPI(mux *http.ServeMux, deps Dependencies, gate *maintenance.Gate) 
 	mux.Handle("DELETE /api/v1/auth/avatar", server.member(http.HandlerFunc(server.deleteAvatar)))
 	mux.Handle("PUT /api/v1/auth/password", server.member(http.HandlerFunc(server.changePassword)))
 
+	mux.Handle("POST /api/v1/bots", server.admin(http.HandlerFunc(server.createBot)))
+	mux.Handle("GET /api/v1/bots/{id}/token", server.admin(http.HandlerFunc(server.botToken)))
+	mux.Handle("POST /api/v1/bots/{id}/token/rotate", server.admin(http.HandlerFunc(server.rotateBotToken)))
+	mux.Handle("POST /api/v1/bots/{id}/avatar", server.admin(http.HandlerFunc(server.uploadBotAvatar)))
+	mux.Handle("DELETE /api/v1/bots/{id}/avatar", server.admin(http.HandlerFunc(server.deleteBotAvatar)))
 	mux.Handle("GET /api/v1/users", server.member(http.HandlerFunc(server.listUsers)))
 	mux.Handle("POST /api/v1/users", server.admin(http.HandlerFunc(server.createUser)))
 	mux.Handle("GET /api/v1/users/{id}", server.member(http.HandlerFunc(server.getUser)))
@@ -834,6 +839,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	status, code, message := http.StatusInternalServerError, "internal_error", "Internal server error"
 	switch {
+	case errors.Is(err, tokens.ErrBotTokenConflict):
+		status, code, message = http.StatusConflict, "bot_token_conflict", "Bot token changed; reload before rotating"
 	case errors.Is(err, archive.ErrVersionConflict):
 		status, code, message = http.StatusConflict, "archive_version_conflict", "Archive settings or object changed; reload before retrying"
 	case errors.Is(err, archive.ErrNotFound):
@@ -848,6 +855,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		status, code, message = http.StatusUnprocessableEntity, "validation_failed", "Invalid archive operation"
 	case appdb.IsBusy(err):
 		status, code, message = http.StatusServiceUnavailable, "database_busy", "Database is busy; retry the request"
+	case errors.Is(err, auth.ErrForbidden):
+		status, code, message = http.StatusForbidden, "forbidden", "Operation is not permitted for this account"
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		status, code, message = http.StatusUnauthorized, "invalid_credentials", "Invalid credentials"
 	case errors.Is(err, board.ErrNotFound), errors.Is(err, cards.ErrNotFound), errors.Is(err, attachments.ErrNotFound), errors.Is(err, avatars.ErrNotFound), errors.Is(err, comments.ErrNotFound), errors.Is(err, tokens.ErrNotFound):
