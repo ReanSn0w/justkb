@@ -822,6 +822,11 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
+	var creationErr *cards.CreationNotAllowedError
+	if errors.As(err, &creationErr) {
+		writeAPIError(w, r, http.StatusConflict, "card_creation_not_allowed", creationErr.Error(), map[string]any{"column_id": creationErr.ColumnID})
+		return
+	}
 	var limitErr *pagination.LimitError
 	if errors.As(err, &limitErr) {
 		writeAPIError(w, r, http.StatusUnprocessableEntity, "validation_failed", limitErr.Error(), limitErr.Details())

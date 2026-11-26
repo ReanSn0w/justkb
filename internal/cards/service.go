@@ -212,12 +212,15 @@ func (s *Service) Create(ctx context.Context, actor Actor, input CreateInput) (C
 	if err := validateEpic(ctx, tx, input.EpicID); err != nil {
 		return Card{}, err
 	}
-	var columnExists bool
-	if err := tx.QueryRowContext(ctx, `SELECT true FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&columnExists); err != nil {
+	var allowCreation bool
+	if err := tx.QueryRowContext(ctx, `SELECT allow_card_creation FROM board_columns WHERE id=$1`, input.ColumnID).Scan(&allowCreation); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Card{}, ErrValidation
 		}
 		return Card{}, err
+	}
+	if !allowCreation {
+		return Card{}, &CreationNotAllowedError{ColumnID: input.ColumnID}
 	}
 	var position string
 	if err := tx.QueryRowContext(ctx, `SELECT CAST(COALESCE(min(position) - 1000, 1000) AS TEXT) FROM cards WHERE column_id=$1 AND NOT is_archived`, input.ColumnID).Scan(&position); err != nil {
@@ -917,4 +920,11 @@ func decodeMovementCursor(value string) (movementCursor, error) {
 		return movementCursor{}, ErrValidation
 	}
 	return cursor, nil
+}
+
+// CreationNotAllowedError applies to all actors, including administrators.
+type CreationNotAllowedError struct{ ColumnID string }
+
+func (e *CreationNotAllowedError) Error() string {
+	return "card creation is not allowed in this column"
 }

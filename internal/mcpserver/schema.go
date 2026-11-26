@@ -87,7 +87,7 @@ func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHa
 		tool.Description += " Omitted fields keep their value. Empty group_id/epic_id clears the link; null keeps it. assignee_id=null or empty clears only the primary assignee; assignee_ids=[] clears all. Never combine assignee_id and assignee_ids. Empty tag_ids clears tags; null keeps them. Archived cards are read-only."
 	}
 	if tool.Name == "create_card" {
-		tool.Description += " title must be non-blank. Never combine assignee_id and assignee_ids. Places the card first in the target column. An archived project cannot receive new cards."
+		tool.Description += " Choose a column with allow_card_creation=true from list_columns; the server rejects all other columns, including for admins. title must be non-blank. Never combine assignee_id and assignee_ids. Places the card first in the target column. An archived project cannot receive new cards."
 	}
 	if tool.Name == "move_card" {
 		tool.Description += " before_card_id and after_card_id are mutually exclusive and must refer to a card in the target column. Omit both to append to the column. Archived cards are read-only."

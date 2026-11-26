@@ -428,6 +428,10 @@ func domainResult(value any, err error) (*mcp.CallToolResult, any, error) {
 	if err == nil {
 		return nil, value, nil
 	}
+	var creationErr *cards.CreationNotAllowedError
+	if errors.As(err, &creationErr) {
+		return errorResult("card_creation_not_allowed", map[string]any{"column_id": creationErr.ColumnID}), nil, nil
+	}
 	var limitErr *pagination.LimitError
 	if errors.As(err, &limitErr) {
 		return errorResult("validation_failed", limitErr.Details()), nil, nil
