@@ -46,10 +46,11 @@ type Group struct {
 }
 
 type Column struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Position int    `json:"position"`
-	WIPLimit *int   `json:"wip_limit"`
+	AllowCardCreation bool   `json:"allow_card_creation"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Position          int    `json:"position"`
+	WIPLimit          *int   `json:"wip_limit"`
 }
 
 type Epic struct {
@@ -302,7 +303,7 @@ func (s *Service) SaveGroup(ctx context.Context, id, name, color string, descrip
 }
 
 func (s *Service) ListColumns(ctx context.Context) ([]Column, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, position, wip_limit FROM board_columns ORDER BY position, id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, position, wip_limit, allow_card_creation FROM board_columns ORDER BY position, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +311,7 @@ func (s *Service) ListColumns(ctx context.Context) ([]Column, error) {
 	items := make([]Column, 0)
 	for rows.Next() {
 		var item Column
-		if err := rows.Scan(&item.ID, &item.Name, &item.Position, &item.WIPLimit); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Position, &item.WIPLimit, &item.AllowCardCreation); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -318,16 +319,20 @@ func (s *Service) ListColumns(ctx context.Context) ([]Column, error) {
 	return items, rows.Err()
 }
 
-func (s *Service) SaveColumn(ctx context.Context, id, name string, wipLimit *int) (Column, error) {
+func (s *Service) SaveColumn(ctx context.Context, id, name string, wipLimit *int, allowCreation ...*bool) (Column, error) {
 	if strings.TrimSpace(name) == "" || (wipLimit != nil && *wipLimit <= 0) {
 		return Column{}, ErrValidation
 	}
 	var column Column
+	var allowed any
+	if len(allowCreation) > 0 && allowCreation[0] != nil {
+		allowed = *allowCreation[0]
+	}
 	var err error
 	if id == "" {
-		err = s.db.QueryRowContext(ctx, `INSERT INTO board_columns (id, name, position, wip_limit) VALUES ($1, $2, COALESCE((SELECT max(position) + 100 FROM board_columns), 100), $3) RETURNING id, name, position, wip_limit`, ids.New(), strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
+		err = s.db.QueryRowContext(ctx, `INSERT INTO board_columns (id, name, position, wip_limit, allow_card_creation) VALUES ($1, $2, COALESCE((SELECT max(position) + 100 FROM board_columns), 100), $3, COALESCE($4,0)) RETURNING id, name, position, wip_limit, allow_card_creation`, ids.New(), strings.TrimSpace(name), wipLimit, allowed).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit, &column.AllowCardCreation)
 	} else {
-		err = s.db.QueryRowContext(ctx, `UPDATE board_columns SET name=$2, wip_limit=$3, updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id, name, position, wip_limit`, id, strings.TrimSpace(name), wipLimit).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit)
+		err = s.db.QueryRowContext(ctx, `UPDATE board_columns SET name=$2, wip_limit=$3, allow_card_creation=COALESCE($4,allow_card_creation), updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING id, name, position, wip_limit, allow_card_creation`, id, strings.TrimSpace(name), wipLimit, allowed).Scan(&column.ID, &column.Name, &column.Position, &column.WIPLimit, &column.AllowCardCreation)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Column{}, ErrNotFound

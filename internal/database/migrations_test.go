@@ -25,7 +25,7 @@ func TestSQLiteMigrationsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 6 {
+	if version != 7 {
 		t.Fatalf("version=%d", version)
 	}
 	if err := goose.DownTo(db, directory, 0); err != nil {
@@ -120,7 +120,39 @@ func TestArchiveMigrationPreservesHistoryAndAssignments(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM cards c JOIN card_additional_assignees a ON a.card_id=c.id WHERE c.assignee_id='u' AND a.user_id='v' AND c.column_entered_at IS NOT NULL`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("assignments=%d err=%v", n, err)
 	}
-	if err := goose.Down(db, dir); err == nil {
+	if err := goose.DownTo(db, dir, 5); err == nil {
 		t.Fatal("destructive archive rollback accepted")
+	}
+}
+
+func TestColumnCreationPolicyMigration(t *testing.T) {
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "columns.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		t.Fatal(err)
+	}
+	const dir = "../../migrations"
+	if err := goose.UpTo(db, dir, 6); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.UpTo(db, dir, 7); err != nil {
+		t.Fatal(err)
+	}
+	var disabled int
+	if err := db.QueryRow(`SELECT count(*) FROM board_columns WHERE NOT allow_card_creation`).Scan(&disabled); err != nil || disabled != 0 {
+		t.Fatalf("migration disabled=%d err=%v", disabled, err)
+	}
+	if _, err := db.Exec(`INSERT INTO board_columns(id,name,position) VALUES('new','New',99999)`); err != nil {
+		t.Fatal(err)
+	}
+	var allowed bool
+	if err := db.QueryRow(`SELECT allow_card_creation FROM board_columns WHERE id='new'`).Scan(&allowed); err != nil || allowed {
+		t.Fatalf("new allowed=%v err=%v", allowed, err)
+	}
+	if _, err := db.Exec(`UPDATE board_columns SET allow_card_creation=2 WHERE id='new'`); err == nil {
+		t.Fatal("invalid boolean accepted")
 	}
 }

@@ -387,8 +387,9 @@ func (a *api) listColumns(w http.ResponseWriter, r *http.Request) {
 }
 
 type columnInput struct {
-	Name     string `json:"name"`
-	WIPLimit *int   `json:"wip_limit"`
+	AllowCardCreation optionalBool `json:"allow_card_creation"`
+	Name              string       `json:"name"`
+	WIPLimit          *int         `json:"wip_limit"`
 }
 
 func (a *api) createColumn(w http.ResponseWriter, r *http.Request) {
@@ -396,7 +397,7 @@ func (a *api) createColumn(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveColumn(r.Context(), "", input.Name, input.WIPLimit)
+	item, err := a.board.SaveColumn(r.Context(), "", input.Name, input.WIPLimit, input.AllowCardCreation.Value)
 	writeCreated(w, r, item, err)
 }
 func (a *api) updateColumn(w http.ResponseWriter, r *http.Request) {
@@ -404,7 +405,7 @@ func (a *api) updateColumn(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	item, err := a.board.SaveColumn(r.Context(), r.PathValue("id"), input.Name, input.WIPLimit)
+	item, err := a.board.SaveColumn(r.Context(), r.PathValue("id"), input.Name, input.WIPLimit, input.AllowCardCreation.Value)
 	writeItem(w, r, item, err)
 }
 func (a *api) reorderColumns(w http.ResponseWriter, r *http.Request) {
